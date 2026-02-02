@@ -28,6 +28,18 @@ pipeline {
 
                         echo '📦 Installing dependencies...'
                         cd client
+
+                        echo '🔧 Loading nvm and selecting Node 24...'
+                        
+                        export NVM_DIR="$HOME/.nvm"
+                        [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+
+                        nvm use 24
+
+                        echo 'Node version in Jenkins SSH session:'
+                        node -v
+                        npm -v
+
                         npm install
 
                         echo '🛠️ Building Next.js frontend...'

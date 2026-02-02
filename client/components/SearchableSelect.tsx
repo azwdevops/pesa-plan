@@ -1,0 +1,280 @@
+"use client";
+
+import React, { useState, useRef, useEffect } from "react";
+
+interface SearchableSelectOption {
+  value: string | number;
+  label: string;
+  searchText?: string; // Optional additional text to search in
+}
+
+interface SearchableSelectProps {
+  options: SearchableSelectOption[];
+  value: string | number;
+  onChange: (value: string | number) => void;
+  placeholder?: string;
+  searchPlaceholder?: string;
+  required?: boolean;
+  className?: string;
+  disabled?: boolean;
+  onCreateNew?: (searchTerm: string) => void; // Callback when "Create new" option is clicked
+  createNewLabel?: (searchTerm: string) => string; // Custom label for create new option
+}
+
+export function SearchableSelect({
+  options,
+  value,
+  onChange,
+  placeholder = "Select an option",
+  searchPlaceholder = "Type to search...",
+  required = false,
+  className = "",
+  disabled = false,
+  onCreateNew,
+  createNewLabel,
+}: SearchableSelectProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [focusedIndex, setFocusedIndex] = useState(-1);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+
+  // Get selected option label
+  const selectedOption = options.find((opt) => opt.value === value);
+  const displayValue = selectedOption ? selectedOption.label : placeholder;
+
+  // Filter options based on search term
+  const filteredOptions = options.filter((option) => {
+    if (!searchTerm) return true;
+    const searchLower = searchTerm.toLowerCase();
+    const labelMatch = option.label.toLowerCase().includes(searchLower);
+    const searchTextMatch = option.searchText
+      ? option.searchText.toLowerCase().includes(searchLower)
+      : false;
+    return labelMatch || searchTextMatch;
+  });
+
+  // Show "Create new" option if no matches found and onCreateNew is provided
+  const showCreateNew = onCreateNew && searchTerm && filteredOptions.length === 0;
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(event.target as Node)
+      ) {
+        setIsOpen(false);
+        setSearchTerm("");
+        setFocusedIndex(-1);
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isOpen]);
+
+  // Handle keyboard navigation
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const maxIndex = filteredOptions.length + (showCreateNew ? 1 : 0) - 1;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setFocusedIndex((prev) => (prev < maxIndex ? prev + 1 : prev));
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setFocusedIndex((prev) => (prev > 0 ? prev - 1 : -1));
+      } else if (e.key === "Enter" && focusedIndex >= 0) {
+        e.preventDefault();
+        if (focusedIndex < filteredOptions.length) {
+          const option = filteredOptions[focusedIndex];
+          if (option) {
+            onChange(option.value);
+            setIsOpen(false);
+            setSearchTerm("");
+            setFocusedIndex(-1);
+          }
+        } else if (showCreateNew && onCreateNew) {
+          onCreateNew(searchTerm);
+          setIsOpen(false);
+          setSearchTerm("");
+          setFocusedIndex(-1);
+        }
+      } else if (e.key === "Escape") {
+        setIsOpen(false);
+        setSearchTerm("");
+        setFocusedIndex(-1);
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen, focusedIndex, filteredOptions, onChange, showCreateNew, onCreateNew, searchTerm]);
+
+  // Scroll focused item into view
+  useEffect(() => {
+    if (focusedIndex >= 0 && listRef.current) {
+      const totalItems = filteredOptions.length + (showCreateNew ? 1 : 0);
+      if (focusedIndex < totalItems) {
+        const focusedElement = listRef.current.children[focusedIndex] as HTMLElement;
+        if (focusedElement) {
+          focusedElement.scrollIntoView({
+            block: "nearest",
+            behavior: "smooth",
+          });
+        }
+      }
+    }
+  }, [focusedIndex, filteredOptions.length, showCreateNew]);
+
+  const handleSelect = (optionValue: string | number) => {
+    onChange(optionValue);
+    setIsOpen(false);
+    setSearchTerm("");
+    setFocusedIndex(-1);
+  };
+
+  const handleToggle = () => {
+    if (disabled) return;
+    setIsOpen(!isOpen);
+    if (!isOpen) {
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 0);
+    }
+  };
+
+  return (
+    <div ref={containerRef} className={`relative ${className}`}>
+      {/* Trigger Button */}
+      <button
+        type="button"
+        onClick={handleToggle}
+        disabled={disabled}
+        className={`w-full rounded-lg border border-zinc-300 bg-white px-4 py-2 text-left text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 ${
+          disabled
+            ? "cursor-not-allowed opacity-50"
+            : "cursor-pointer hover:border-zinc-400 dark:hover:border-zinc-600"
+        } ${!selectedOption ? "text-zinc-500 dark:text-zinc-400" : ""}`}
+      >
+        <div className="flex items-center justify-between">
+          <span className="truncate">{displayValue}</span>
+          <svg
+            className={`h-5 w-5 text-zinc-400 transition-transform ${
+              isOpen ? "rotate-180" : ""
+            }`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M19 9l-7 7-7-7"
+            />
+          </svg>
+        </div>
+      </button>
+
+      {/* Dropdown */}
+      {isOpen && (
+        <div className="absolute z-50 mt-1 w-full rounded-lg border border-zinc-300 bg-white shadow-lg dark:border-zinc-700 dark:bg-zinc-800">
+          {/* Search Input */}
+          <div className="border-b border-zinc-200 p-2 dark:border-zinc-700">
+            <input
+              ref={inputRef}
+              type="text"
+              value={searchTerm}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setFocusedIndex(-1);
+              }}
+              placeholder={searchPlaceholder}
+              className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
+            />
+          </div>
+
+          {/* Options List */}
+          <ul
+            ref={listRef}
+            className="max-h-60 overflow-auto p-1"
+            role="listbox"
+          >
+            {filteredOptions.length === 0 && !showCreateNew ? (
+              <li className="px-3 py-2 text-sm text-zinc-500 dark:text-zinc-400">
+                No options found
+              </li>
+            ) : (
+              <>
+                {filteredOptions.map((option, index) => (
+                  <li
+                    key={option.value}
+                    role="option"
+                    aria-selected={value === option.value}
+                    onClick={() => handleSelect(option.value)}
+                    onMouseEnter={() => setFocusedIndex(index)}
+                    className={`cursor-pointer rounded-md px-3 py-2 text-sm transition-colors ${
+                      value === option.value
+                        ? "bg-blue-100 text-blue-900 dark:bg-blue-900/30 dark:text-blue-100"
+                        : focusedIndex === index
+                        ? "bg-zinc-100 text-zinc-900 dark:bg-zinc-700 dark:text-zinc-100"
+                        : "text-zinc-900 hover:bg-zinc-50 dark:text-zinc-100 dark:hover:bg-zinc-700"
+                    }`}
+                  >
+                    {option.label}
+                  </li>
+                ))}
+                {showCreateNew && (
+                  <li
+                    role="option"
+                    onClick={() => {
+                      if (onCreateNew) {
+                        onCreateNew(searchTerm);
+                        setIsOpen(false);
+                        setSearchTerm("");
+                        setFocusedIndex(-1);
+                      }
+                    }}
+                    onMouseEnter={() => setFocusedIndex(filteredOptions.length)}
+                    className={`cursor-pointer rounded-md px-3 py-2 text-sm transition-colors ${
+                      focusedIndex === filteredOptions.length
+                        ? "bg-green-100 text-green-900 dark:bg-green-900/30 dark:text-green-100"
+                        : "text-green-700 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-900/20"
+                    }`}
+                  >
+                    <span className="font-medium">
+                      {createNewLabel ? createNewLabel(searchTerm) : `Create "${searchTerm}"`}
+                    </span>
+                  </li>
+                )}
+              </>
+            )}
+          </ul>
+        </div>
+      )}
+
+      {/* Hidden input for form validation */}
+      {required && (
+        <input
+          type="hidden"
+          value={value || ""}
+          required={required}
+          aria-hidden="true"
+        />
+      )}
+    </div>
+  );
+}
+

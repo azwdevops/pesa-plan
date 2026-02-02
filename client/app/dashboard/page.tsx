@@ -1,0 +1,391 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts";
+import { Header } from "@/components/Header";
+import { Sidebar } from "@/components/Sidebar";
+import { useAuth } from "@/lib/hooks/use-auth";
+import { useSidebar } from "@/contexts/SidebarContext";
+import { useTransactions } from "@/lib/hooks/use-transactions";
+import { useLedgers, useSpendingTypes } from "@/lib/hooks/use-accounts";
+import { useQuery } from "@tanstack/react-query";
+import { getTransaction } from "@/lib/api/transactions";
+
+export default function DashboardPage() {
+  const router = useRouter();
+  const { isAuthenticated, isLoading } = useAuth();
+  const { isSidebarOpen, setIsSidebarOpen, toggleSidebar } = useSidebar();
+  const { data: incomeTransactions = [], refetch: refetchIncome } = useTransactions("MONEY_RECEIVED");
+  const { data: expenseTransactions = [], refetch: refetchExpenses } = useTransactions("MONEY_PAID");
+  const { data: ledgers = [], refetch: refetchLedgers } = useLedgers();
+  const { data: spendingTypes = [], refetch: refetchSpendingTypes } = useSpendingTypes();
+  const { token } = useAuth();
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      router.push("/login");
+    }
+  }, [isAuthenticated, isLoading, router]);
+
+  // Don't show loading screen if we're just checking auth - only show if actually loading
+  if (!isAuthenticated && !isLoading) {
+    return null; // Will redirect, don't render anything
+  }
+
+  // Calculate totals - ensure values are numbers
+  const totalIncome = incomeTransactions.reduce(
+    (sum, transaction) => {
+      const amount = typeof transaction.total_amount === 'string' 
+        ? parseFloat(transaction.total_amount) 
+        : Number(transaction.total_amount) || 0;
+      return sum + amount;
+    },
+    0
+  );
+  const totalExpenses = expenseTransactions.reduce(
+    (sum, transaction) => {
+      const amount = typeof transaction.total_amount === 'string' 
+        ? parseFloat(transaction.total_amount) 
+        : Number(transaction.total_amount) || 0;
+      return sum + amount;
+    },
+    0
+  );
+  const netBalance = totalIncome - totalExpenses;
+
+  // Create a map of spending_type_id to spending_type name
+  const spendingTypeMap = useMemo(() => {
+    const map = new Map<number, string>();
+    spendingTypes.forEach((spendingType) => {
+      map.set(spendingType.id, spendingType.name);
+    });
+    return map;
+  }, [spendingTypes]);
+
+  // Create a map of ledger_id to spending_type_id for quick lookup
+  const ledgerSpendingTypeIdMap = useMemo(() => {
+    const map = new Map<number, number>();
+    ledgers.forEach((ledger) => {
+      if (ledger.spending_type_id) {
+        map.set(ledger.id, ledger.spending_type_id);
+      }
+    });
+    return map;
+  }, [ledgers]);
+
+  // Fetch transaction details for all expense transactions to get items
+  // We'll fetch them in parallel using Promise.all
+  const expenseTransactionIds = expenseTransactions.map(t => t.id).sort().join(',');
+  const { data: expenseTransactionsWithItems = [], isLoading: isLoadingTransactions, refetch: refetchExpenseTransactionsWithItems } = useQuery({
+    queryKey: ["expenseTransactionsWithItems", expenseTransactionIds],
+    queryFn: async () => {
+      if (!token || expenseTransactions.length === 0) return [];
+      
+      const transactions = await Promise.all(
+        expenseTransactions.map((t) => getTransaction(token, t.id))
+      );
+      return transactions;
+    },
+    enabled: expenseTransactions.length > 0 && !!token,
+  });
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await Promise.all([
+        refetchIncome(),
+        refetchExpenses(),
+        refetchLedgers(),
+        refetchSpendingTypes(),
+      ]);
+      // Refetch expense transactions with items after expenses are refetched
+      if (expenseTransactions.length > 0) {
+        await refetchExpenseTransactionsWithItems();
+      }
+    } catch (error) {
+      console.error("Error refreshing data:", error);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  // Group expenses by spending type
+  // Approach: For each spending type, sum all transaction items from ledgers with that spending_type_id
+  const expensesBySpendingType = useMemo(() => {
+    const spendingTypeTotals = new Map<number, number>();
+
+    // Process transactions with items
+    if (expenseTransactionsWithItems.length > 0) {
+      expenseTransactionsWithItems.forEach((transaction) => {
+        // Find all DEBIT items that have spending types (expense ledgers)
+        // Transaction charges don't have spending types, so they're excluded
+        transaction.items.forEach((item) => {
+          if (item.entry_type === "DEBIT") {
+            const spendingTypeId = ledgerSpendingTypeIdMap.get(item.ledger_id);
+            if (spendingTypeId) {
+              const amount =
+                typeof item.amount === "string"
+                  ? parseFloat(item.amount)
+                  : Number(item.amount) || 0;
+
+              if (amount > 0) {
+                const existing = spendingTypeTotals.get(spendingTypeId) || 0;
+                spendingTypeTotals.set(spendingTypeId, existing + amount);
+              }
+            }
+          }
+        });
+      });
+    }
+
+    // Calculate total expenses from spending types (for percentage calculation)
+    // This ensures percentages add up to 100% based on actual categorized expenses
+    const totalExpensesFromSpendingTypes = Array.from(spendingTypeTotals.values()).reduce(
+      (sum, total) => sum + total,
+      0
+    );
+
+    // Build result array with spending type names
+    const result = Array.from(spendingTypeTotals.entries())
+      .map(([spendingTypeId, total]) => {
+        const spendingTypeName = spendingTypeMap.get(spendingTypeId) || `Unknown (ID: ${spendingTypeId})`;
+        return {
+          name: spendingTypeName,
+          value: Number(total.toFixed(2)),
+          percentage:
+            totalExpensesFromSpendingTypes > 0
+              ? Number(((total / totalExpensesFromSpendingTypes) * 100).toFixed(1))
+              : 0,
+        };
+      })
+      .sort((a, b) => b.value - a.value);
+
+    return result;
+  }, [
+    expenseTransactionsWithItems,
+    ledgerSpendingTypeIdMap,
+    spendingTypeMap,
+  ]);
+
+  // Colors for the pie chart
+  const COLORS = [
+    "#3b82f6", // blue
+    "#10b981", // green
+    "#f59e0b", // amber
+    "#ef4444", // red
+    "#8b5cf6", // purple
+    "#ec4899", // pink
+    "#06b6d4", // cyan
+    "#f97316", // orange
+    "#84cc16", // lime
+    "#6366f1", // indigo
+  ];
+
+  return (
+    <div className="flex min-h-screen flex-col bg-zinc-50 dark:bg-zinc-950" suppressHydrationWarning>
+      <Header
+        onMenuClick={toggleSidebar}
+        isSidebarOpen={isSidebarOpen}
+      />
+      <Sidebar
+        isOpen={isSidebarOpen}
+        onClose={() => setIsSidebarOpen(false)}
+        isLoggedIn={isAuthenticated}
+      />
+      <main
+        className={`flex-1 transition-all duration-300 ${
+          isSidebarOpen && isAuthenticated ? "lg:ml-64" : "lg:ml-0"
+        }`}
+      >
+        <div className="container mx-auto px-4 py-8 md:px-6 md:py-12">
+          <div className="mb-8 flex items-center justify-between">
+            <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-100">
+              Dashboard
+            </h1>
+            <button
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              className="flex items-center gap-2 rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
+              title="Refresh data"
+            >
+              <svg
+                className={`h-5 w-5 ${isRefreshing ? "animate-spin" : ""}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                />
+              </svg>
+              <span>{isRefreshing ? "Refreshing..." : "Refresh"}</span>
+            </button>
+          </div>
+
+          {/* Financial Overview */}
+          <div className="mb-8 rounded-xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+            <h2 className="mb-6 text-2xl font-semibold text-zinc-900 dark:text-zinc-100">
+              Your Financial Overview
+            </h2>
+            <div className="grid gap-6 md:grid-cols-3">
+              <div className="text-center">
+                <div className="mb-2 text-3xl font-bold text-green-600 dark:text-green-400">
+                  KSh {totalIncome.toLocaleString("en-US", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                    useGrouping: true,
+                  })}
+                </div>
+                <div className="text-sm text-zinc-600 dark:text-zinc-400">
+                  Total Income
+                </div>
+              </div>
+              <div className="text-center">
+                <div className="mb-2 text-3xl font-bold text-red-600 dark:text-red-400">
+                  KSh {totalExpenses.toLocaleString("en-US", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                    useGrouping: true,
+                  })}
+                </div>
+                <div className="text-sm text-zinc-600 dark:text-zinc-400">
+                  Total Expenses
+                </div>
+              </div>
+              <div className="text-center">
+                <div className={`mb-2 text-3xl font-bold ${
+                  netBalance >= 0 
+                    ? "text-blue-600 dark:text-blue-400" 
+                    : "text-red-600 dark:text-red-400"
+                }`}>
+                  KSh {netBalance.toLocaleString("en-US", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                    useGrouping: true,
+                  })}
+                </div>
+                <div className="text-sm text-zinc-600 dark:text-zinc-400">
+                  Net Balance
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Expenses by Spending Type Chart */}
+          <div className="mb-8 rounded-xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+            <h2 className="mb-6 text-2xl font-semibold text-zinc-900 dark:text-zinc-100">
+              Expenses by Spending Type
+            </h2>
+            {isLoadingTransactions ? (
+              <div className="py-12 text-center">
+                <p className="text-zinc-600 dark:text-zinc-400">Loading spending breakdown...</p>
+              </div>
+            ) : expensesBySpendingType.length > 0 ? (
+              <div className="grid gap-8 md:grid-cols-2">
+                {/* Pie Chart */}
+                <div className="flex items-center justify-center">
+                  <ResponsiveContainer width="100%" height={300}>
+                    <PieChart>
+                      <Pie
+                        data={expensesBySpendingType}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={(props: any) => {
+                          const entry = expensesBySpendingType[props.index];
+                          return entry ? `${entry.name}: ${entry.percentage}%` : "";
+                        }}
+                        outerRadius={100}
+                        fill="#8884d8"
+                        dataKey="value"
+                      >
+                        {expensesBySpendingType.map((entry, index) => (
+                          <Cell
+                            key={`cell-${index}`}
+                            fill={COLORS[index % COLORS.length]}
+                          />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        formatter={(value: number | undefined) => {
+                          if (value === undefined) return "";
+                          return `KSh ${value.toLocaleString("en-US", {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                            useGrouping: true,
+                          })}`;
+                        }}
+                        contentStyle={{
+                          backgroundColor: "rgba(255, 255, 255, 0.95)",
+                          border: "1px solid #e4e4e7",
+                          borderRadius: "0.5rem",
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* Legend with amounts */}
+                <div className="flex flex-col justify-center">
+                  <div className="space-y-3">
+                    {expensesBySpendingType.map((item, index) => (
+                      <div
+                        key={item.name}
+                        className="flex items-center justify-between rounded-lg border border-zinc-200 p-4 dark:border-zinc-700"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div
+                            className="h-4 w-4 rounded-full"
+                            style={{
+                              backgroundColor: COLORS[index % COLORS.length],
+                            }}
+                          />
+                          <span className="font-medium text-zinc-900 dark:text-zinc-100">
+                            {item.name}
+                          </span>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-semibold text-zinc-900 dark:text-zinc-100">
+                            KSh {item.value.toLocaleString("en-US", {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                              useGrouping: true,
+                            })}
+                          </div>
+                          <div className="text-sm text-zinc-600 dark:text-zinc-400">
+                            {item.percentage}%
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="py-12 text-center">
+                <p className="text-zinc-600 dark:text-zinc-400">
+                  {expenseTransactions.length === 0
+                    ? "No expense transactions yet. Start recording expenses to see spending breakdown."
+                    : expenseTransactionsWithItems.length === 0
+                    ? "Loading transaction details..."
+                    : spendingTypes.length === 0
+                    ? "No spending categories found. Create spending categories in the Accounts page."
+                    : ledgerSpendingTypeIdMap.size === 0
+                    ? "No expense ledgers with spending categories found. Make sure your expense ledgers have spending categories assigned in the Accounts page."
+                    : "No expenses with spending categories found in the selected transactions. Make sure your expense ledgers have spending categories assigned."}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}
+

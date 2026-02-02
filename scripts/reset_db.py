@@ -6,6 +6,7 @@ This script connects to PostgreSQL and recreates the database from scratch.
 
 import sys
 import os
+from urllib.parse import urlparse, unquote
 import psycopg2
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 
@@ -13,7 +14,7 @@ from decouple import config, Config, RepositoryEnv
 
 
 def get_db_config():
-    """Get database configuration from separate environment variables."""
+    """Get database configuration from DATABASE_URL environment variable."""
     # Get the project root directory (pesa-plan folder)
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.join(script_dir, "..")
@@ -23,16 +24,39 @@ def get_db_config():
     env_config = Config(RepositoryEnv(env_file))
 
     try:
+        database_url = env_config("PESA_PLAN_DATABASE_URL")
+        if not database_url or not isinstance(database_url, str):
+            raise ValueError("PESA_PLAN_DATABASE_URL is not set or is not a valid string")
+
+        # Parse the database URL
+        parsed = urlparse(str(database_url))
+
+        # Validate required components
+        if not parsed.hostname:
+            raise ValueError("PESA_PLAN_DATABASE_URL is missing hostname")
+        if not parsed.port:
+            raise ValueError("PESA_PLAN_DATABASE_URL is missing port")
+        if not parsed.username:
+            raise ValueError("PESA_PLAN_DATABASE_URL is missing username")
+        if parsed.password is None:
+            raise ValueError("PESA_PLAN_DATABASE_URL is missing password")
+
+        # Extract database name (remove leading slash)
+        database = parsed.path.lstrip("/")
+        if not database:
+            raise ValueError("PESA_PLAN_DATABASE_URL is missing database name")
+
         return {
-            "host": env_config("POSTGRES_DB_HOST", default="localhost"),
-            "port": env_config("POSTGRES_DB_PORT", default=5432, cast=int),
-            "user": env_config("POSTGRES_DB_USER", default="postgres"),
-            "password": env_config("POSTGRES_DB_PASSWORD", default=""),
-            "database": env_config("POSTGRES_DB_NAME_PESA_PLAN", default="postgres"),
+            "host": parsed.hostname,
+            "port": parsed.port,
+            "user": unquote(parsed.username),
+            "password": unquote(parsed.password),
+            "database": database,
         }
     except Exception as e:
         print(f"Error reading database configuration: {e}")
-        print("Make sure POSTGRES_DB_HOST, POSTGRES_DB_PORT, POSTGRES_DB_USER, POSTGRES_DB_PASSWORD, and POSTGRES_DB_NAME_PESA_PLAN are set in .env")
+        print("Make sure PESA_PLAN_DATABASE_URL is set in .env")
+        print("Format: postgresql://user:password@host:port/database_name")
         sys.exit(1)
 
 

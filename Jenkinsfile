@@ -50,8 +50,10 @@ pipeline {
                         source .venv/bin/activate
                         pip install -r requirements.txt
 
+                        cd server
+
                         alembic upgrade head
-                        
+
                         deactivate
 
                         echo "🔁 Restarting services"

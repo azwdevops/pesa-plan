@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
@@ -420,7 +420,7 @@ export default function ReportsPage() {
                       grouped[item.parent_group_name][item.ledger_group_name].push(item);
                     });
 
-                    const rows: JSX.Element[] = [];
+                    const rows: React.ReactElement[] = [];
                     let rowKey = 0;
 
                     // Calculate totals for each level

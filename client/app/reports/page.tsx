@@ -1036,9 +1036,9 @@ export default function ReportsPage() {
             <p className="text-zinc-600 dark:text-zinc-400">Loading ledger report...</p>
           </div>
         ) : ledgerReport ? (
-          <div className="space-y-6">
+          <div className="flex max-h-[calc(100vh-12rem)] flex-col space-y-6 overflow-hidden">
             {/* Report Header */}
-            <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-700 dark:bg-zinc-800">
+            <div className="flex-shrink-0 rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-700 dark:bg-zinc-800">
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
                   <p className="text-sm text-zinc-600 dark:text-zinc-400">Ledger</p>
@@ -1069,7 +1069,7 @@ export default function ReportsPage() {
             </div>
 
             {/* Summary */}
-            <div className="grid gap-4 md:grid-cols-4">
+            <div className="flex-shrink-0 grid gap-4 md:grid-cols-4">
               <div className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900">
                 <p className="text-sm text-zinc-600 dark:text-zinc-400">Opening Balance</p>
                 <p className={`text-lg font-semibold ${
@@ -1122,8 +1122,9 @@ export default function ReportsPage() {
 
             {/* Transactions Table */}
             {ledgerReport.entries.length > 0 ? (
-              <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-700">
-                <table className="w-full">
+              <div className="flex-1 min-h-0 overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-700">
+                <div className="h-full overflow-y-auto overflow-x-auto">
+                  <table className="w-full">
                   <thead className="border-b border-zinc-200 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800">
                     <tr>
                       <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-zinc-700 dark:text-zinc-300">
@@ -1217,6 +1218,7 @@ export default function ReportsPage() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               </div>
             ) : (
               <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-8 text-center dark:border-zinc-700 dark:bg-zinc-800">

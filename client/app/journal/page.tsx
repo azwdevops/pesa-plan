@@ -111,8 +111,12 @@ export default function JournalPage() {
       } else {
         item.debit_amount = "";
       }
-    } else {
-      item[field] = value;
+    } else if (field === "ledger_id") {
+      item.ledger_id = typeof value === "number" ? value : parseInt(value as string);
+    } else if (field === "debit_amount") {
+      item.debit_amount = value as string;
+    } else if (field === "credit_amount") {
+      item.credit_amount = value as string;
     }
     
     updated[index] = item;

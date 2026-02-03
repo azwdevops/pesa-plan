@@ -9,6 +9,7 @@ from models.finance import (
     TransactionType,
     EntryType,
 )
+from models.feedback import Feedback, FeedbackType
 
 __all__ = [
     "User",
@@ -20,4 +21,6 @@ __all__ = [
     "TransactionItem",
     "TransactionType",
     "EntryType",
+    "Feedback",
+    "FeedbackType",
 ]

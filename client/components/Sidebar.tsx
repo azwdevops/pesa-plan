@@ -17,9 +17,11 @@ export function Sidebar({ isOpen, onClose, isLoggedIn = false }: SidebarProps) {
     { icon: "💰", label: "Income", href: "/income" },
     { icon: "💸", label: "Expenses", href: "/expenses" },
     { icon: "🏢", label: "Assets", href: "/assets" },
+    { icon: "💳", label: "Loans", href: "/loans" },
     { icon: "🔄", label: "Transfers", href: "/transfers" },
     { icon: "🏦", label: "Accounts", href: "/accounts" },
     { icon: "📈", label: "Reports", href: "/reports" },
+    { icon: "💬", label: "Feedback", href: "/feedback" },
     { icon: "⚙️", label: "Settings", href: "/settings" },
   ];
 

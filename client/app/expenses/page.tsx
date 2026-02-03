@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { Header } from "@/components/Header";
 import { Sidebar } from "@/components/Sidebar";
 import { Dialog } from "@/components/Dialog";
@@ -18,19 +19,24 @@ import {
   useSpendingTypes,
   useCreateSpendingType,
 } from "@/lib/hooks/use-accounts";
-import { useCreateTransaction } from "@/lib/hooks/use-transactions";
+import { useCreateTransaction, useTransactions } from "@/lib/hooks/use-transactions";
+import { useQuery } from "@tanstack/react-query";
+import { getTransaction } from "@/lib/api/transactions";
 import type { LedgerCreate } from "@/lib/api/accounts";
 
 export default function ExpensesPage() {
   const router = useRouter();
   const { isAuthenticated, isLoading } = useAuth();
   const { isSidebarOpen, setIsSidebarOpen, toggleSidebar } = useSidebar();
-  const { data: ledgers = [], isLoading: ledgersLoading } = useLedgers();
+  const { data: ledgers = [], isLoading: ledgersLoading, refetch: refetchLedgers } = useLedgers();
   const { data: groups = [] } = useLedgerGroups();
-  const { data: spendingTypes = [] } = useSpendingTypes();
+  const { data: spendingTypes = [], refetch: refetchSpendingTypes } = useSpendingTypes();
+  const { data: expenseTransactions = [], refetch: refetchExpenses } = useTransactions("MONEY_PAID");
+  const { token } = useAuth();
   const createTransactionMutation = useCreateTransaction();
   const createLedgerMutation = useCreateLedger();
   const createSpendingTypeMutation = useCreateSpendingType();
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Filter ledgers: expense ledgers, asset ledgers (for paying account), and charge ledgers
   const expenseGroups = groups.filter(
@@ -96,6 +102,120 @@ export default function ExpensesPage() {
       router.push("/login");
     }
   }, [isAuthenticated, isLoading, router]);
+
+  // Create a map of ledger_id to ledger name
+  const ledgerMap = useMemo(() => {
+    const map = new Map<number, string>();
+    ledgers.forEach((ledger) => {
+      map.set(ledger.id, ledger.name);
+    });
+    return map;
+  }, [ledgers]);
+
+  // Fetch transaction details for all expense transactions to get items
+  const expenseTransactionIds = expenseTransactions.map(t => t.id).sort().join(',');
+  const { data: expenseTransactionsWithItems = [], isLoading: isLoadingTransactions, refetch: refetchExpenseTransactionsWithItems } = useQuery({
+    queryKey: ["expenseTransactionsWithItems", expenseTransactionIds],
+    queryFn: async () => {
+      if (!token || expenseTransactions.length === 0) return [];
+      
+      const transactions = await Promise.all(
+        expenseTransactions.map((t) => getTransaction(token, t.id))
+      );
+      return transactions;
+    },
+    enabled: expenseTransactions.length > 0 && !!token,
+  });
+
+  // Group expenses by ledger (expense ledgers only, excluding charges)
+  const expensesByLedger = useMemo(() => {
+    const ledgerTotals = new Map<number, number>();
+
+    // Process transactions with items
+    if (expenseTransactionsWithItems.length > 0) {
+      expenseTransactionsWithItems.forEach((transaction) => {
+        // Find all DEBIT items that are expense ledgers (not charge ledgers)
+        transaction.items.forEach((item) => {
+          if (item.entry_type === "DEBIT") {
+            // Check if this ledger is an expense ledger (not a charge ledger)
+            const ledger = ledgers.find(l => l.id === item.ledger_id);
+            if (ledger && expenseLedgers.some(el => el.id === ledger.id)) {
+              const amount =
+                typeof item.amount === "string"
+                  ? parseFloat(item.amount)
+                  : Number(item.amount) || 0;
+
+              if (amount > 0) {
+                const existing = ledgerTotals.get(item.ledger_id) || 0;
+                ledgerTotals.set(item.ledger_id, existing + amount);
+              }
+            }
+          }
+        });
+      });
+    }
+
+    // Calculate total expenses (for percentage calculation)
+    const totalExpenses = Array.from(ledgerTotals.values()).reduce(
+      (sum, total) => sum + total,
+      0
+    );
+
+    // Build result array with ledger names
+    const result = Array.from(ledgerTotals.entries())
+      .map(([ledgerId, total]) => {
+        const ledgerName = ledgerMap.get(ledgerId) || `Unknown (ID: ${ledgerId})`;
+        return {
+          name: ledgerName,
+          value: Number(total.toFixed(2)),
+          percentage:
+            totalExpenses > 0
+              ? Number(((total / totalExpenses) * 100).toFixed(1))
+              : 0,
+        };
+      })
+      .sort((a, b) => b.value - a.value);
+
+    return result;
+  }, [
+    expenseTransactionsWithItems,
+    ledgerMap,
+    ledgers,
+    expenseLedgers,
+  ]);
+
+  // Colors for the pie chart
+  const COLORS = [
+    "#3b82f6", // blue
+    "#10b981", // green
+    "#f59e0b", // amber
+    "#ef4444", // red
+    "#8b5cf6", // purple
+    "#ec4899", // pink
+    "#06b6d4", // cyan
+    "#f97316", // orange
+    "#84cc16", // lime
+    "#6366f1", // indigo
+  ];
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await Promise.all([
+        refetchExpenses(),
+        refetchLedgers(),
+        refetchSpendingTypes(),
+      ]);
+      // Refetch expense transactions with items after expenses are refetched
+      if (expenseTransactions.length > 0) {
+        await refetchExpenseTransactionsWithItems();
+      }
+    } catch (error) {
+      console.error("Error refreshing data:", error);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   // Don't show loading screen if we're just checking auth - only show if actually loading
   if (!isAuthenticated && !isLoading) {
@@ -401,12 +521,141 @@ export default function ExpensesPage() {
                 Record and manage expense transactions
               </p>
             </div>
-            <button
-              onClick={() => setShowPostExpenseDialog(true)}
-              className="rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white transition-colors hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
-            >
-              + Post Expense
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+                className="flex items-center gap-2 rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
+                title="Refresh data"
+              >
+                <svg
+                  className={`h-5 w-5 ${isRefreshing ? "animate-spin" : ""}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
+                </svg>
+                <span>{isRefreshing ? "Refreshing..." : "Refresh"}</span>
+              </button>
+              <button
+                onClick={() => setShowPostExpenseDialog(true)}
+                className="rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white transition-colors hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+              >
+                + Post Expense
+              </button>
+            </div>
+          </div>
+
+          {/* Expenses by Ledger Chart */}
+          <div className="mb-8 rounded-xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+            <h2 className="mb-6 text-2xl font-semibold text-zinc-900 dark:text-zinc-100">
+              Expenses by Ledger
+            </h2>
+            {isLoadingTransactions ? (
+              <div className="py-12 text-center">
+                <p className="text-zinc-600 dark:text-zinc-400">Loading expense breakdown...</p>
+              </div>
+            ) : expensesByLedger.length > 0 ? (
+              <div className="grid gap-8 md:grid-cols-2">
+                {/* Pie Chart */}
+                <div className="flex items-center justify-center">
+                  <ResponsiveContainer width="100%" height={300}>
+                    <PieChart>
+                      <Pie
+                        data={expensesByLedger}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={(props: any) => {
+                          const entry = expensesByLedger[props.index];
+                          return entry ? `${entry.name}: ${entry.percentage}%` : "";
+                        }}
+                        outerRadius={100}
+                        fill="#8884d8"
+                        dataKey="value"
+                      >
+                        {expensesByLedger.map((entry, index) => (
+                          <Cell
+                            key={`cell-${index}`}
+                            fill={COLORS[index % COLORS.length]}
+                          />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        formatter={(value: number | undefined) => {
+                          if (value === undefined) return "";
+                          return `KSh ${value.toLocaleString("en-US", {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                            useGrouping: true,
+                          })}`;
+                        }}
+                        contentStyle={{
+                          backgroundColor: "rgba(255, 255, 255, 0.95)",
+                          border: "1px solid #e4e4e7",
+                          borderRadius: "0.5rem",
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* Legend with amounts */}
+                <div className="flex flex-col justify-center">
+                  <div className="space-y-3">
+                    {expensesByLedger.map((item, index) => (
+                      <div
+                        key={item.name}
+                        className="flex items-center justify-between rounded-lg border border-zinc-200 p-4 dark:border-zinc-700"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div
+                            className="h-4 w-4 rounded-full"
+                            style={{
+                              backgroundColor: COLORS[index % COLORS.length],
+                            }}
+                          />
+                          <span className="font-medium text-zinc-900 dark:text-zinc-100">
+                            {item.name}
+                          </span>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-semibold text-zinc-900 dark:text-zinc-100">
+                            KSh {item.value.toLocaleString("en-US", {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                              useGrouping: true,
+                            })}
+                          </div>
+                          <div className="text-sm text-zinc-600 dark:text-zinc-400">
+                            {item.percentage}%
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="py-12 text-center">
+                <p className="text-zinc-600 dark:text-zinc-400">
+                  {expenseTransactions.length === 0
+                    ? "No expense transactions yet. Start recording expenses to see expense breakdown."
+                    : expenseTransactionsWithItems.length === 0
+                    ? "Loading transaction details..."
+                    : expenseLedgers.length === 0
+                    ? "No expense ledgers found. Create expense ledgers in the Accounts page."
+                    : "No expenses found in the selected transactions."}
+                </p>
+              </div>
+            )}
           </div>
 
         </div>

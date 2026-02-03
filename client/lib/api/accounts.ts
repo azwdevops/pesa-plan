@@ -1,3 +1,5 @@
+import { handleApiResponse } from "../api-utils";
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 if (!API_BASE_URL) {
   throw new Error("NEXT_PUBLIC_API_URL environment variable is required");
@@ -80,6 +82,10 @@ export async function getParentLedgerGroups(token: string): Promise<ParentLedger
     },
   });
 
+  if (handleApiResponse(response)) {
+    throw new Error("Unauthorized");
+  }
+
   if (!response.ok) {
     throw new Error("Failed to fetch parent ledger groups");
   }
@@ -99,6 +105,10 @@ export async function createParentLedgerGroup(
     },
     body: JSON.stringify(data),
   });
+
+  if (handleApiResponse(response)) {
+    throw new Error("Unauthorized");
+  }
 
   if (!response.ok) {
     const error = await response.json();
@@ -122,6 +132,10 @@ export async function getLedgerGroups(token: string, parent_group_id?: number): 
     },
   });
 
+  if (handleApiResponse(response)) {
+    throw new Error("Unauthorized");
+  }
+
   if (!response.ok) {
     throw new Error("Failed to fetch ledger groups");
   }
@@ -141,6 +155,10 @@ export async function createLedgerGroup(
     },
     body: JSON.stringify(data),
   });
+
+  if (handleApiResponse(response)) {
+    throw new Error("Unauthorized");
+  }
 
   if (!response.ok) {
     const error = await response.json();
@@ -163,6 +181,10 @@ export async function createLedger(
     body: JSON.stringify(data),
   });
 
+  if (handleApiResponse(response)) {
+    throw new Error("Unauthorized");
+  }
+
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.detail || "Failed to create ledger");
@@ -179,6 +201,10 @@ export async function getSpendingTypes(token: string): Promise<SpendingType[]> {
       "Content-Type": "application/json",
     },
   });
+
+  if (handleApiResponse(response)) {
+    throw new Error("Unauthorized");
+  }
 
   if (!response.ok) {
     throw new Error("Failed to fetch spending types");
@@ -200,6 +226,10 @@ export async function createSpendingType(
     body: JSON.stringify(data),
   });
 
+  if (handleApiResponse(response)) {
+    throw new Error("Unauthorized");
+  }
+
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.detail || "Failed to create spending type");
@@ -216,6 +246,10 @@ export async function getLedgers(token: string): Promise<Ledger[]> {
       "Content-Type": "application/json",
     },
   });
+
+  if (handleApiResponse(response)) {
+    throw new Error("Unauthorized");
+  }
 
   if (!response.ok) {
     throw new Error("Failed to fetch ledgers");
@@ -238,6 +272,10 @@ export async function updateLedger(
     body: JSON.stringify(data),
   });
 
+  if (handleApiResponse(response)) {
+    throw new Error("Unauthorized");
+  }
+
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.detail || "Failed to update ledger");
@@ -254,6 +292,10 @@ export async function deleteLedger(token: string, ledgerId: number): Promise<voi
       "Content-Type": "application/json",
     },
   });
+
+  if (handleApiResponse(response)) {
+    throw new Error("Unauthorized");
+  }
 
   if (!response.ok) {
     const error = await response.json();
@@ -275,6 +317,10 @@ export async function updateLedgerGroup(
     body: JSON.stringify(data),
   });
 
+  if (handleApiResponse(response)) {
+    throw new Error("Unauthorized");
+  }
+
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.detail || "Failed to update ledger group");
@@ -291,6 +337,10 @@ export async function deleteLedgerGroup(token: string, groupId: number): Promise
       "Content-Type": "application/json",
     },
   });
+
+  if (handleApiResponse(response)) {
+    throw new Error("Unauthorized");
+  }
 
   if (!response.ok) {
     const error = await response.json();

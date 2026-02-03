@@ -1,3 +1,5 @@
+import { handleApiResponse } from "../api-utils";
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 if (!API_BASE_URL) {
   throw new Error("NEXT_PUBLIC_API_URL environment variable is required");
@@ -48,6 +50,10 @@ export async function getTrialBalance(
       },
     }
   );
+
+  if (handleApiResponse(response)) {
+    throw new Error("Unauthorized");
+  }
 
   if (!response.ok) {
     const error = await response.json();
@@ -102,6 +108,10 @@ export async function getLedgerReport(
       },
     }
   );
+
+  if (handleApiResponse(response)) {
+    throw new Error("Unauthorized");
+  }
 
   if (!response.ok) {
     const error = await response.json();

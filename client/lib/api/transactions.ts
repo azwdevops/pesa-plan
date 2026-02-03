@@ -1,3 +1,5 @@
+import { handleApiResponse } from "../api-utils";
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 if (!API_BASE_URL) {
   throw new Error("NEXT_PUBLIC_API_URL environment variable is required");
@@ -57,6 +59,10 @@ export async function createTransaction(
     body: JSON.stringify(data),
   });
 
+  if (handleApiResponse(response)) {
+    throw new Error("Unauthorized");
+  }
+
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.detail || "Failed to create transaction");
@@ -87,6 +93,10 @@ export async function getTransactions(
     }
   );
 
+  if (handleApiResponse(response)) {
+    throw new Error("Unauthorized");
+  }
+
   if (!response.ok) {
     throw new Error("Failed to fetch transactions");
   }
@@ -108,6 +118,10 @@ export async function getTransaction(
       },
     }
   );
+
+  if (handleApiResponse(response)) {
+    throw new Error("Unauthorized");
+  }
 
   if (!response.ok) {
     throw new Error("Failed to fetch transaction");

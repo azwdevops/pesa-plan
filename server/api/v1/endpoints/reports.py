@@ -19,13 +19,13 @@ class TrialBalanceItem(BaseModel):
     ledger_name: str
     ledger_group_name: str
     parent_group_name: str
-    # Opening balance
+    # Opening balance (single figure - either debit or credit)
     opening_debit: Decimal
     opening_credit: Decimal
-    # Net transactions (period)
+    # Net transactions (period) - single figure
     period_debit: Decimal
     period_credit: Decimal
-    # Closing balance
+    # Closing balance (single figure - either debit or credit)
     closing_debit: Decimal
     closing_credit: Decimal
 
@@ -37,13 +37,13 @@ class TrialBalanceResponse(BaseModel):
     start_date: date
     end_date: date
     items: List[TrialBalanceItem]
-    # Opening totals
+    # Opening totals (single figures)
     total_opening_debit: Decimal
     total_opening_credit: Decimal
-    # Period totals
+    # Period totals (single figures)
     total_period_debit: Decimal
     total_period_credit: Decimal
-    # Closing totals
+    # Closing totals (single figures)
     total_closing_debit: Decimal
     total_closing_credit: Decimal
     is_balanced: bool
@@ -136,6 +136,18 @@ async def get_trial_balance(
     )
     period_results = {row.ledger_id: row for row in period_query.all()}
 
+    # Helper function to determine if a parent group is asset/expense type (debit normal)
+    # or liability/capital/income type (credit normal)
+    def is_debit_normal_group(parent_group_name: str) -> bool:
+        """Returns True if the group normally has debit balances (assets/expenses)."""
+        parent_lower = parent_group_name.lower()
+        # Assets and expenses have debit normal balances
+        return (
+            "asset" in parent_lower
+            or "expenditure" in parent_lower
+            or "expense" in parent_lower
+        )
+
     # Build trial balance items
     items = []
     total_opening_debit = Decimal("0")
@@ -148,20 +160,53 @@ async def get_trial_balance(
     for ledger in all_ledgers:
         # Get opening balances (default to 0 if no transactions)
         opening_row = opening_results.get(ledger.id)
-        opening_debit = Decimal(str(opening_row.opening_debit if opening_row else 0))
-        opening_credit = Decimal(str(opening_row.opening_credit if opening_row else 0))
+        opening_debit_raw = Decimal(str(opening_row.opening_debit if opening_row else 0))
+        opening_credit_raw = Decimal(str(opening_row.opening_credit if opening_row else 0))
 
         # Get period transactions (default to 0 if no transactions)
         period_row = period_results.get(ledger.id)
-        period_debit = Decimal(str(period_row.period_debit if period_row else 0))
-        period_credit = Decimal(str(period_row.period_credit if period_row else 0))
+        period_debit_raw = Decimal(str(period_row.period_debit if period_row else 0))
+        period_credit_raw = Decimal(str(period_row.period_credit if period_row else 0))
 
-        # Calculate closing balances
-        closing_debit = opening_debit + period_debit
-        closing_credit = opening_credit + period_credit
+        # Determine balance calculation based on parent group
+        is_debit_normal = is_debit_normal_group(ledger.parent_group_name)
+
+        # Calculate opening balance: for debit-normal (assets/expenses): debit - credit
+        # for credit-normal (liabilities/capital/incomes): credit - debit
+        if is_debit_normal:
+            opening_balance = opening_debit_raw - opening_credit_raw
+        else:
+            opening_balance = opening_credit_raw - opening_debit_raw
+
+        # Period transactions: show actual debit and credit values (not net)
+        period_debit = period_debit_raw
+        period_credit = period_credit_raw
+
+        # Calculate closing balance (opening balance + net period transactions)
+        if is_debit_normal:
+            period_net = period_debit_raw - period_credit_raw
+        else:
+            period_net = period_credit_raw - period_debit_raw
+        
+        closing_balance = opening_balance + period_net
+
+        # Convert opening and closing to single debit/credit representation
+        # For debit-normal: positive = debit, negative = credit
+        # For credit-normal: positive = credit, negative = debit
+        if is_debit_normal:
+            opening_debit = opening_balance if opening_balance >= 0 else Decimal("0")
+            opening_credit = -opening_balance if opening_balance < 0 else Decimal("0")
+            closing_debit = closing_balance if closing_balance >= 0 else Decimal("0")
+            closing_credit = -closing_balance if closing_balance < 0 else Decimal("0")
+        else:
+            # For credit-normal: positive = credit, negative = debit
+            opening_credit = opening_balance if opening_balance >= 0 else Decimal("0")
+            opening_debit = -opening_balance if opening_balance < 0 else Decimal("0")
+            closing_credit = closing_balance if closing_balance >= 0 else Decimal("0")
+            closing_debit = -closing_balance if closing_balance < 0 else Decimal("0")
 
         # Only include ledgers that have transactions (opening or period)
-        if opening_debit > 0 or opening_credit > 0 or period_debit > 0 or period_credit > 0:
+        if opening_debit_raw > 0 or opening_credit_raw > 0 or period_debit_raw > 0 or period_credit_raw > 0:
             items.append(
                 TrialBalanceItem(
                     ledger_id=ledger.id,

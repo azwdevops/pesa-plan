@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts";
 import { Header } from "@/components/Header";
 import { Sidebar } from "@/components/Sidebar";
@@ -11,6 +13,8 @@ import { useTransactions } from "@/lib/hooks/use-transactions";
 import { useLedgers, useSpendingTypes } from "@/lib/hooks/use-accounts";
 import { useQuery } from "@tanstack/react-query";
 import { getTransaction } from "@/lib/api/transactions";
+
+type PeriodType = "month" | "custom";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -22,6 +26,21 @@ export default function DashboardPage() {
   const { data: spendingTypes = [], refetch: refetchSpendingTypes } = useSpendingTypes();
   const { token } = useAuth();
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [periodType, setPeriodType] = useState<PeriodType>("month");
+  const [selectedMonthDate, setSelectedMonthDate] = useState<Date>(new Date());
+  const [customStartDate, setCustomStartDate] = useState<Date | null>(null);
+  const [customEndDate, setCustomEndDate] = useState<Date | null>(null);
+
+  // Initialize custom dates when switching to custom mode
+  useEffect(() => {
+    if (periodType === "custom" && !customStartDate && !customEndDate) {
+      const now = new Date();
+      const start = new Date(now.getFullYear(), now.getMonth(), 1);
+      const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+      setCustomStartDate(start);
+      setCustomEndDate(end);
+    }
+  }, [periodType, customStartDate, customEndDate]);
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -34,8 +53,48 @@ export default function DashboardPage() {
     return null; // Will redirect, don't render anything
   }
 
+  // Calculate date range based on period type
+  const getDateRange = () => {
+    if (periodType === "month") {
+      const start = new Date(selectedMonthDate.getFullYear(), selectedMonthDate.getMonth(), 1);
+      const end = new Date(selectedMonthDate.getFullYear(), selectedMonthDate.getMonth() + 1, 0, 23, 59, 59, 999);
+      return { start, end };
+    } else {
+      // Custom date range
+      if (!customStartDate || !customEndDate) {
+        // Default to current month if custom dates not set
+        const now = new Date();
+        const start = new Date(now.getFullYear(), now.getMonth(), 1);
+        const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+        return { start, end };
+      }
+      const start = new Date(customStartDate);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(customEndDate);
+      end.setHours(23, 59, 59, 999);
+      return { start, end };
+    }
+  };
+
+  const { start: startDate, end: endDate } = getDateRange();
+
+  // Filter transactions by date range
+  const filteredIncomeTransactions = useMemo(() => {
+    return incomeTransactions.filter((transaction) => {
+      const transactionDate = new Date(transaction.transaction_date);
+      return transactionDate >= startDate && transactionDate <= endDate;
+    });
+  }, [incomeTransactions, startDate, endDate]);
+
+  const filteredExpenseTransactions = useMemo(() => {
+    return expenseTransactions.filter((transaction) => {
+      const transactionDate = new Date(transaction.transaction_date);
+      return transactionDate >= startDate && transactionDate <= endDate;
+    });
+  }, [expenseTransactions, startDate, endDate]);
+
   // Calculate totals - ensure values are numbers
-  const totalIncome = incomeTransactions.reduce(
+  const totalIncome = filteredIncomeTransactions.reduce(
     (sum, transaction) => {
       const amount = typeof transaction.total_amount === 'string' 
         ? parseFloat(transaction.total_amount) 
@@ -44,7 +103,7 @@ export default function DashboardPage() {
     },
     0
   );
-  const totalExpenses = expenseTransactions.reduce(
+  const totalExpenses = filteredExpenseTransactions.reduce(
     (sum, transaction) => {
       const amount = typeof transaction.total_amount === 'string' 
         ? parseFloat(transaction.total_amount) 
@@ -75,20 +134,20 @@ export default function DashboardPage() {
     return map;
   }, [ledgers]);
 
-  // Fetch transaction details for all expense transactions to get items
+  // Fetch transaction details for filtered expense transactions to get items
   // We'll fetch them in parallel using Promise.all
-  const expenseTransactionIds = expenseTransactions.map(t => t.id).sort().join(',');
+  const expenseTransactionIds = filteredExpenseTransactions.map(t => t.id).sort().join(',');
   const { data: expenseTransactionsWithItems = [], isLoading: isLoadingTransactions, refetch: refetchExpenseTransactionsWithItems } = useQuery({
     queryKey: ["expenseTransactionsWithItems", expenseTransactionIds],
     queryFn: async () => {
-      if (!token || expenseTransactions.length === 0) return [];
+      if (!token || filteredExpenseTransactions.length === 0) return [];
       
       const transactions = await Promise.all(
-        expenseTransactions.map((t) => getTransaction(token, t.id))
+        filteredExpenseTransactions.map((t) => getTransaction(token, t.id))
       );
       return transactions;
     },
-    enabled: expenseTransactions.length > 0 && !!token,
+    enabled: filteredExpenseTransactions.length > 0 && !!token,
   });
 
   const handleRefresh = async () => {
@@ -101,7 +160,7 @@ export default function DashboardPage() {
         refetchSpendingTypes(),
       ]);
       // Refetch expense transactions with items after expenses are refetched
-      if (expenseTransactions.length > 0) {
+      if (filteredExpenseTransactions.length > 0) {
         await refetchExpenseTransactionsWithItems();
       }
     } catch (error) {
@@ -230,9 +289,106 @@ export default function DashboardPage() {
 
           {/* Financial Overview */}
           <div className="mb-8 rounded-xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-            <h2 className="mb-6 text-2xl font-semibold text-zinc-900 dark:text-zinc-100">
-              Your Financial Overview
-            </h2>
+            <div className="mb-6">
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-100">
+                  Your Financial Overview
+                </h2>
+              
+              {/* Period Filter */}
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setPeriodType("month")}
+                    className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                      periodType === "month"
+                        ? "bg-blue-600 text-white dark:bg-blue-500"
+                        : "border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
+                    }`}
+                  >
+                    Month
+                  </button>
+                  <button
+                    onClick={() => setPeriodType("custom")}
+                    className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                      periodType === "custom"
+                        ? "bg-blue-600 text-white dark:bg-blue-500"
+                        : "border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
+                    }`}
+                  >
+                    Custom
+                  </button>
+                </div>
+
+                {periodType === "month" ? (
+                  <DatePicker
+                    selected={selectedMonthDate}
+                    onChange={(date: Date | null) => {
+                      if (date) setSelectedMonthDate(date);
+                    }}
+                    dateFormat="MMMM yyyy"
+                    showMonthYearPicker
+                    className="w-48 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+                    popperPlacement="bottom-start"
+                  />
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <DatePicker
+                      selected={customStartDate}
+                      onChange={(date: Date | null) => setCustomStartDate(date)}
+                      selectsStart
+                      startDate={customStartDate}
+                      endDate={customEndDate}
+                      dateFormat="dd/MM/yyyy"
+                      placeholderText="Start Date"
+                      className="w-40 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+                      popperPlacement="bottom-start"
+                    />
+                    <span className="text-zinc-600 dark:text-zinc-400">to</span>
+                    <DatePicker
+                      selected={customEndDate}
+                      onChange={(date: Date | null) => setCustomEndDate(date)}
+                      selectsEnd
+                      startDate={customStartDate}
+                      endDate={customEndDate}
+                      minDate={customStartDate}
+                      dateFormat="dd/MM/yyyy"
+                      placeholderText="End Date"
+                      className="w-40 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+                      popperPlacement="bottom-start"
+                    />
+                  </div>
+                )}
+              </div>
+              </div>
+              {/* Period Display */}
+              <div className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+                {periodType === "month" ? (
+                  <span>
+                    {selectedMonthDate.toLocaleDateString("en-GB", {
+                      month: "long",
+                      year: "numeric",
+                    })}
+                  </span>
+                ) : customStartDate && customEndDate ? (
+                  <span>
+                    {customStartDate.toLocaleDateString("en-GB", {
+                      day: "2-digit",
+                      month: "2-digit",
+                      year: "numeric",
+                    })}{" "}
+                    to{" "}
+                    {customEndDate.toLocaleDateString("en-GB", {
+                      day: "2-digit",
+                      month: "2-digit",
+                      year: "numeric",
+                    })}
+                  </span>
+                ) : (
+                  <span>Select date range</span>
+                )}
+              </div>
+            </div>
             <div className="grid gap-6 md:grid-cols-3">
               <div className="text-center">
                 <div className="mb-2 text-3xl font-bold text-green-600 dark:text-green-400">
@@ -370,7 +526,7 @@ export default function DashboardPage() {
             ) : (
               <div className="py-12 text-center">
                 <p className="text-zinc-600 dark:text-zinc-400">
-                  {expenseTransactions.length === 0
+                  {filteredExpenseTransactions.length === 0
                     ? "No expense transactions yet. Start recording expenses to see spending breakdown."
                     : expenseTransactionsWithItems.length === 0
                     ? "Loading transaction details..."

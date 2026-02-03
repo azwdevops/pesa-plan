@@ -130,6 +130,13 @@ class TransactionCreate(TransactionBase):
     items: list[TransactionItemCreate]
 
 
+class TransactionUpdate(BaseModel):
+    transaction_date: Optional[date] = None
+    reference: Optional[str] = None
+    transaction_type: Optional[TransactionType] = None
+    items: Optional[list[TransactionItemCreate]] = None
+
+
 class TransactionResponse(TransactionBase):
     id: int
     user_id: int

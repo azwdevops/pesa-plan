@@ -46,6 +46,13 @@ export interface TransactionCreate {
   items: TransactionItem[];
 }
 
+export interface TransactionUpdate {
+  transaction_date?: string;
+  reference?: string | null;
+  transaction_type?: TransactionType;
+  items?: TransactionItem[];
+}
+
 export async function createTransaction(
   token: string,
   data: TransactionCreate
@@ -130,4 +137,56 @@ export async function getTransaction(
   return response.json();
 }
 
+export async function updateTransaction(
+  token: string,
+  transactionId: number,
+  data: TransactionUpdate
+): Promise<TransactionWithItems> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/transactions/${transactionId}`,
+    {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    }
+  );
 
+  if (handleApiResponse(response)) {
+    throw new Error("Unauthorized");
+  }
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || "Failed to update transaction");
+  }
+
+  return response.json();
+}
+
+export async function deleteTransaction(
+  token: string,
+  transactionId: number
+): Promise<void> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/transactions/${transactionId}`,
+    {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+    }
+  );
+
+  if (handleApiResponse(response)) {
+    throw new Error("Unauthorized");
+  }
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || "Failed to delete transaction");
+  }
+}

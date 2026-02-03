@@ -12,6 +12,9 @@ import { useAuth } from "@/lib/hooks/use-auth";
 import { useSidebar } from "@/contexts/SidebarContext";
 import { useTrialBalance, useLedgerReport } from "@/lib/hooks/use-reports";
 import { useParentLedgerGroups, useLedgers } from "@/lib/hooks/use-accounts";
+import { useUpdateTransaction, useDeleteTransaction, useTransaction } from "@/lib/hooks/use-transactions";
+import { getTransaction } from "@/lib/api/transactions";
+import type { TransactionWithItems, TransactionUpdate } from "@/lib/api/transactions";
 
 type PeriodType = "first_quarter" | "second_quarter" | "half_year" | "year" | "custom";
 
@@ -33,6 +36,13 @@ export default function ReportsPage() {
   const [ledgerEndDate, setLedgerEndDate] = useState<Date | null>(null);
   const [selectedLedgerId, setSelectedLedgerId] = useState<number | null>(null);
   const { data: ledgers = [] } = useLedgers();
+  const [editingTransactionId, setEditingTransactionId] = useState<number | null>(null);
+  const [deletingTransactionId, setDeletingTransactionId] = useState<number | null>(null);
+  const [editFormData, setEditFormData] = useState<TransactionUpdate | null>(null);
+  const [editError, setEditError] = useState<string | null>(null);
+  const updateTransactionMutation = useUpdateTransaction();
+  const deleteTransactionMutation = useDeleteTransaction();
+  const { token } = useAuth();
 
   // Initialize dates when dialog opens
   useEffect(() => {
@@ -208,6 +218,60 @@ export default function ReportsPage() {
     }
     setShowLedgerReportDialog(false);
     setShowLedgerReportResults(true);
+  };
+
+  const handleEditTransaction = async (transactionId: number) => {
+    if (!token) return;
+    try {
+      const transaction = await getTransaction(token, transactionId);
+      setEditFormData({
+        transaction_date: transaction.transaction_date,
+        reference: transaction.reference,
+        transaction_type: transaction.transaction_type,
+        items: transaction.items.map(item => ({
+          ledger_id: item.ledger_id,
+          entry_type: item.entry_type,
+          amount: item.amount,
+        })),
+      });
+      setEditingTransactionId(transactionId);
+      setEditError(null);
+    } catch (error) {
+      setEditError(error instanceof Error ? error.message : "Failed to load transaction");
+    }
+  };
+
+  const handleDeleteTransaction = (transactionId: number) => {
+    setDeletingTransactionId(transactionId);
+  };
+
+  const confirmDeleteTransaction = async () => {
+    if (!deletingTransactionId) return;
+    try {
+      await deleteTransactionMutation.mutateAsync(deletingTransactionId);
+      setDeletingTransactionId(null);
+      await refetchLedgerReport();
+    } catch (error) {
+      setEditError(error instanceof Error ? error.message : "Failed to delete transaction");
+    }
+  };
+
+  const handleUpdateTransaction = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTransactionId || !editFormData) return;
+
+    try {
+      await updateTransactionMutation.mutateAsync({
+        transactionId: editingTransactionId,
+        data: editFormData,
+      });
+      setEditingTransactionId(null);
+      setEditFormData(null);
+      setEditError(null);
+      await refetchLedgerReport();
+    } catch (error) {
+      setEditError(error instanceof Error ? error.message : "Failed to update transaction");
+    }
   };
 
   if (isLoading || !isAuthenticated) {
@@ -1144,6 +1208,9 @@ export default function ReportsPage() {
                       <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-zinc-700 dark:text-zinc-300">
                         Balance
                       </th>
+                      <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-zinc-700 dark:text-zinc-300">
+                        Actions
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1165,6 +1232,7 @@ export default function ReportsPage() {
                           useGrouping: true,
                         })}
                       </td>
+                      <td className="px-4 py-3 text-center border-r border-zinc-300 dark:border-zinc-500">-</td>
                     </tr>
                     {ledgerReport.entries.map((entry, index) => (
                       <tr
@@ -1213,6 +1281,48 @@ export default function ReportsPage() {
                             useGrouping: true,
                           })}
                         </td>
+                        <td className="px-4 py-3 text-center border-r border-zinc-300 dark:border-zinc-500">
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              onClick={() => handleEditTransaction(entry.transaction_id)}
+                              className="rounded p-1.5 text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20 transition-colors"
+                              title="Edit transaction"
+                            >
+                              <svg
+                                className="h-4 w-4"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                                />
+                              </svg>
+                            </button>
+                            <button
+                              onClick={() => handleDeleteTransaction(entry.transaction_id)}
+                              className="rounded p-1.5 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20 transition-colors"
+                              title="Delete transaction"
+                            >
+                              <svg
+                                className="h-4 w-4"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                                />
+                              </svg>
+                            </button>
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -1231,6 +1341,171 @@ export default function ReportsPage() {
             <p className="text-zinc-600 dark:text-zinc-400">No data available</p>
           </div>
         )}
+      </Dialog>
+
+      {/* Edit Transaction Dialog */}
+      <Dialog
+        isOpen={editingTransactionId !== null}
+        onClose={() => {
+          setEditingTransactionId(null);
+          setEditFormData(null);
+          setEditError(null);
+        }}
+        title="Edit Transaction"
+        size="lg"
+      >
+        {editFormData ? (
+          <form onSubmit={handleUpdateTransaction} className="space-y-4">
+            <div>
+              <label className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Transaction Date *
+              </label>
+              <DatePicker
+                selected={editFormData.transaction_date ? new Date(editFormData.transaction_date) : null}
+                onChange={(date: Date | null) => {
+                  if (date) {
+                    setEditFormData({
+                      ...editFormData,
+                      transaction_date: formatDateForAPI(date),
+                    });
+                  }
+                }}
+                dateFormat="dd/MM/yyyy"
+                className="w-full rounded-lg border border-zinc-300 bg-white px-4 py-2 text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+                required
+                popperPlacement="bottom-start"
+              />
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Reference
+              </label>
+              <input
+                type="text"
+                value={editFormData.reference || ""}
+                onChange={(e) =>
+                  setEditFormData({ ...editFormData, reference: e.target.value || null })
+                }
+                className="w-full rounded-lg border border-zinc-300 bg-white px-4 py-2 text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+                placeholder="Optional reference"
+              />
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Transaction Items
+              </label>
+              <div className="space-y-2 max-h-60 overflow-y-auto">
+                {editFormData.items?.map((item, index) => {
+                  const ledger = ledgers.find((l) => l.id === item.ledger_id);
+                  return (
+                    <div
+                      key={index}
+                      className="flex items-center gap-2 rounded-lg border border-zinc-200 p-3 dark:border-zinc-700"
+                    >
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                          {ledger?.name || `Ledger ID: ${item.ledger_id}`}
+                        </p>
+                        <p className="text-xs text-zinc-600 dark:text-zinc-400">
+                          {item.entry_type}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+                          KSh {Number(item.amount).toLocaleString("en-US", {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                            useGrouping: true,
+                          })}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+                Note: Editing transaction items is not supported. Please delete and recreate the transaction if you need to change items.
+              </p>
+            </div>
+
+            {editError && (
+              <div className="rounded-lg bg-red-50 p-4 text-sm text-red-800 dark:bg-red-900/20 dark:text-red-200">
+                {editError}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingTransactionId(null);
+                  setEditFormData(null);
+                  setEditError(null);
+                }}
+                className="rounded-lg border border-zinc-300 px-6 py-2 font-medium text-zinc-700 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={updateTransactionMutation.isPending}
+                className="rounded-lg bg-blue-600 px-6 py-2 font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
+              >
+                {updateTransactionMutation.isPending ? "Updating..." : "Update Transaction"}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <div className="flex items-center justify-center py-8">
+            <p className="text-zinc-600 dark:text-zinc-400">Loading transaction...</p>
+          </div>
+        )}
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        isOpen={deletingTransactionId !== null}
+        onClose={() => {
+          setDeletingTransactionId(null);
+          setEditError(null);
+        }}
+        title="Delete Transaction"
+        size="md"
+      >
+        <div className="space-y-4">
+          <p className="text-zinc-700 dark:text-zinc-300">
+            Are you sure you want to delete this transaction? This action cannot be undone.
+          </p>
+
+          {editError && (
+            <div className="rounded-lg bg-red-50 p-4 text-sm text-red-800 dark:bg-red-900/20 dark:text-red-200">
+              {editError}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-4">
+            <button
+              type="button"
+              onClick={() => {
+                setDeletingTransactionId(null);
+                setEditError(null);
+              }}
+              className="rounded-lg border border-zinc-300 px-6 py-2 font-medium text-zinc-700 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={confirmDeleteTransaction}
+              disabled={deleteTransactionMutation.isPending}
+              className="rounded-lg bg-red-600 px-6 py-2 font-semibold text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-red-500 dark:hover:bg-red-600"
+            >
+              {deleteTransactionMutation.isPending ? "Deleting..." : "Delete"}
+            </button>
+          </div>
+        </div>
       </Dialog>
     </div>
   );

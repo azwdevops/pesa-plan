@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 
 interface SearchableSelectOption {
   value: string | number;
@@ -41,6 +42,8 @@ export function SearchableSelect({
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
 
   // Get selected option label
   const selectedOption = options.find((opt) => opt.value === value);
@@ -60,13 +63,39 @@ export function SearchableSelect({
   // Show "Create new" option if no matches found and onCreateNew is provided
   const showCreateNew = onCreateNew && searchTerm && filteredOptions.length === 0;
 
+  // Update dropdown position when opened
+  useEffect(() => {
+    if (isOpen && containerRef.current) {
+      const updatePosition = () => {
+        const rect = containerRef.current?.getBoundingClientRect();
+        if (rect) {
+          setDropdownPosition({
+            top: rect.bottom + 4, // Fixed positioning is relative to viewport
+            left: rect.left,
+            width: rect.width,
+          });
+        }
+      };
+      
+      updatePosition();
+      window.addEventListener("scroll", updatePosition, true);
+      window.addEventListener("resize", updatePosition);
+      
+      return () => {
+        window.removeEventListener("scroll", updatePosition, true);
+        window.removeEventListener("resize", updatePosition);
+      };
+    }
+  }, [isOpen]);
+
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(event.target as Node)
-      ) {
+      const target = event.target as Node;
+      const isClickInsideContainer = containerRef.current?.contains(target);
+      const isClickInsideDropdown = dropdownRef.current?.contains(target);
+      
+      if (!isClickInsideContainer && !isClickInsideDropdown) {
         setIsOpen(false);
         setSearchTerm("");
         setFocusedIndex(-1);
@@ -169,7 +198,7 @@ export function SearchableSelect({
   const canClear = allowClear && !required && selectedOption && !disabled;
 
   return (
-    <div ref={containerRef} className={`relative ${className}`}>
+    <div ref={containerRef} className={`relative z-[99999] ${className}`}>
       {/* Trigger Button */}
       <button
         type="button"
@@ -225,9 +254,18 @@ export function SearchableSelect({
         </div>
       </button>
 
-      {/* Dropdown */}
-      {isOpen && (
-        <div className="absolute z-50 mt-1 w-full rounded-lg border border-zinc-300 bg-white shadow-lg dark:border-zinc-700 dark:bg-zinc-800">
+      {/* Dropdown - Rendered via Portal */}
+      {isOpen && typeof document !== "undefined" && createPortal(
+        <div
+          ref={dropdownRef}
+          className="fixed z-[99999] rounded-lg border border-zinc-300 bg-white shadow-2xl dark:border-zinc-700 dark:bg-zinc-800"
+          style={{
+            top: `${dropdownPosition.top}px`,
+            left: `${dropdownPosition.left}px`,
+            width: `${dropdownPosition.width}px`,
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
           {/* Search Input */}
           <div className="border-b border-zinc-200 p-2 dark:border-zinc-700">
             <input
@@ -299,7 +337,8 @@ export function SearchableSelect({
               </>
             )}
           </ul>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Hidden input for form validation */}

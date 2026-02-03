@@ -586,15 +586,21 @@ export default function IncomePage() {
                 <div className="flex items-center justify-center min-h-0 p-0 sm:p-2 md:p-4">
                   <div className="w-full h-[450px] sm:h-[550px] md:h-[650px] lg:h-[700px] xl:h-[750px]">
                     <ResponsiveContainer width="100%" height="100%">
-                      <PieChart margin={{ top: 15, right: 15, bottom: 15, left: 15 }}>
+                      <PieChart margin={{ top: 0, right: 15, bottom: 10, left: 15 }}>
                         <Pie
                           data={incomesByLedger}
                           cx="50%"
-                          cy="50%"
+                          cy="40%"
                           labelLine={true}
                           label={(props: any) => {
                             const entry = incomesByLedger[props.index];
-                            return entry ? `${entry.name}: ${entry.percentage}%` : "";
+                            if (!entry) return "";
+                            const amount = entry.value.toLocaleString("en-US", {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                              useGrouping: true,
+                            });
+                            return `${entry.name}: ${entry.percentage}% (KSh ${amount})`;
                           }}
                           outerRadius="70%"
                         fill="#8884d8"

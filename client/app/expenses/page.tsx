@@ -723,7 +723,13 @@ export default function ExpensesPage() {
                           labelLine={true}
                           label={(props: any) => {
                             const entry = expensesByLedger[props.index];
-                            return entry ? `${entry.name}: ${entry.percentage}%` : "";
+                            if (!entry) return "";
+                            const amount = entry.value.toLocaleString("en-US", {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                              useGrouping: true,
+                            });
+                            return `${entry.name}: ${entry.percentage}% (KSh ${amount})`;
                           }}
                           outerRadius="70%"
                         fill="#8884d8"

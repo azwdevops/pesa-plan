@@ -53,7 +53,9 @@ export default function IncomePage() {
 
   const [showPostIncomeDialog, setShowPostIncomeDialog] = useState(false);
   const [showCreateLedgerDialog, setShowCreateLedgerDialog] = useState(false);
+  const [showCreateAssetLedgerDialog, setShowCreateAssetLedgerDialog] = useState(false);
   const [pendingLedgerName, setPendingLedgerName] = useState("");
+  const [pendingAssetLedgerName, setPendingAssetLedgerName] = useState("");
   const [formData, setFormData] = useState({
     transaction_date: new Date(),
     income_ledger_id: 0,
@@ -63,6 +65,11 @@ export default function IncomePage() {
   const [ledgerFormData, setLedgerFormData] = useState<LedgerCreate>({
     name: "",
     ledger_group_id: incomeGroups[0]?.id || 0,
+    spending_type_id: null,
+  });
+  const [assetLedgerFormData, setAssetLedgerFormData] = useState<LedgerCreate>({
+    name: "",
+    ledger_group_id: assetGroups[0]?.id || 0,
     spending_type_id: null,
   });
   const [error, setError] = useState<string | null>(null);
@@ -306,6 +313,59 @@ export default function IncomePage() {
     setShowCreateLedgerDialog(true);
   };
 
+  const handleCreateNewAssetLedger = (searchTerm: string) => {
+    setPendingAssetLedgerName(searchTerm);
+    setAssetLedgerFormData({
+      name: searchTerm,
+      ledger_group_id: assetGroups[0]?.id || 0,
+      spending_type_id: null,
+    });
+    setShowCreateAssetLedgerDialog(true);
+  };
+
+  const handleCreateAssetLedger = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+
+    if (!assetLedgerFormData.name.trim()) {
+      setError("Ledger name is required");
+      return;
+    }
+
+    if (!assetLedgerFormData.ledger_group_id) {
+      setError("Ledger group is required");
+      return;
+    }
+
+    try {
+      await createLedgerMutation.mutateAsync(assetLedgerFormData);
+      const { data: updatedLedgers } = await refetchLedgers();
+      setShowCreateAssetLedgerDialog(false);
+      const savedName = pendingAssetLedgerName;
+      setAssetLedgerFormData({
+        name: "",
+        ledger_group_id: assetGroups[0]?.id || 0,
+        spending_type_id: null,
+      });
+      setPendingAssetLedgerName("");
+      
+      // Auto-select the newly created ledger
+      if (updatedLedgers) {
+        const newLedger = updatedLedgers.find(
+          (l) => l.name === savedName && assetGroups.some((g) => g.id === l.ledger_group_id)
+        );
+        if (newLedger) {
+          setFormData({
+            ...formData,
+            receiving_account_id: newLedger.id,
+          });
+        }
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create ledger");
+    }
+  };
+
   return (
     <div className="flex min-h-screen flex-col bg-zinc-50 dark:bg-zinc-950" suppressHydrationWarning>
       <Header
@@ -377,18 +437,18 @@ export default function IncomePage() {
               <div className="grid gap-8 md:grid-cols-2">
                 {/* Pie Chart */}
                 <div className="flex items-center justify-center">
-                  <ResponsiveContainer width="100%" height={300}>
+                  <ResponsiveContainer width="100%" height={550}>
                     <PieChart>
                       <Pie
                         data={incomesByLedger}
                         cx="50%"
                         cy="50%"
-                        labelLine={false}
+                        labelLine={true}
                         label={(props: any) => {
                           const entry = incomesByLedger[props.index];
                           return entry ? `${entry.name}: ${entry.percentage}%` : "";
                         }}
-                        outerRadius={100}
+                        outerRadius={170}
                         fill="#8884d8"
                         dataKey="value"
                       >
@@ -528,6 +588,7 @@ export default function IncomePage() {
                 searchPlaceholder="Type to search income sources..."
                 required
                 className="w-full"
+                allowClear
                 onCreateNew={handleCreateNewLedger}
                 createNewLabel={(searchTerm) => `Create "${searchTerm}" ledger`}
               />
@@ -566,6 +627,9 @@ export default function IncomePage() {
                 searchPlaceholder="Type to search accounts..."
                 required
                 className="w-full"
+                allowClear
+                onCreateNew={handleCreateNewAssetLedger}
+                createNewLabel={(searchTerm) => `Create "${searchTerm}" account`}
               />
               {assetLedgers.length === 0 && !ledgersLoading && (
                 <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
@@ -695,6 +759,90 @@ export default function IncomePage() {
                 setShowCreateLedgerDialog(false);
                 setError(null);
                 setPendingLedgerName("");
+              }}
+              className="rounded-lg border border-zinc-300 px-6 py-2 font-medium text-zinc-700 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={createLedgerMutation.isPending}
+              className="rounded-lg bg-blue-600 px-6 py-2 font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
+            >
+              {createLedgerMutation.isPending ? "Creating..." : "Create Ledger"}
+            </button>
+          </div>
+        </form>
+      </Dialog>
+
+      {/* Create Asset Ledger Dialog */}
+      <Dialog
+        isOpen={showCreateAssetLedgerDialog}
+        onClose={() => {
+          setShowCreateAssetLedgerDialog(false);
+          setError(null);
+          setPendingAssetLedgerName("");
+        }}
+        title="Create Asset Ledger"
+        size="lg"
+      >
+        <form onSubmit={handleCreateAssetLedger} className="space-y-4">
+          <div>
+            <label className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              Ledger Name *
+            </label>
+            <input
+              type="text"
+              value={assetLedgerFormData.name}
+              onChange={(e) =>
+                setAssetLedgerFormData({ ...assetLedgerFormData, name: e.target.value })
+              }
+              required
+              className="w-full rounded-lg border border-zinc-300 bg-white px-4 py-2 text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+              placeholder="e.g., Bank Account, Cash Account"
+            />
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              Ledger Group *
+            </label>
+            <SearchableSelect
+              options={assetGroups.map((group) => ({
+                value: group.id,
+                label: group.name,
+                searchText: group.parent_ledger_group
+                  ? `${group.name} ${group.parent_ledger_group.name}`
+                  : group.name,
+              }))}
+              value={assetLedgerFormData.ledger_group_id || 0}
+              onChange={(value) =>
+                setAssetLedgerFormData({
+                  ...assetLedgerFormData,
+                  ledger_group_id:
+                    typeof value === "number" ? value : parseInt(value as string),
+                })
+              }
+              placeholder="Select a ledger group"
+              searchPlaceholder="Type to search ledger groups..."
+              required
+              className="w-full"
+            />
+          </div>
+
+          {error && (
+            <div className="rounded-lg bg-red-50 p-4 text-sm text-red-800 dark:bg-red-900/20 dark:text-red-200">
+              {error}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-4">
+            <button
+              type="button"
+              onClick={() => {
+                setShowCreateAssetLedgerDialog(false);
+                setError(null);
+                setPendingAssetLedgerName("");
               }}
               className="rounded-lg border border-zinc-300 px-6 py-2 font-medium text-zinc-700 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
             >

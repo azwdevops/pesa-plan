@@ -398,6 +398,7 @@ export default function TransfersPage() {
                 searchPlaceholder="Type to search accounts..."
                 required
                 className="w-full"
+                allowClear
                 onCreateNew={(searchTerm) => {
                   setPendingFromAccountName(searchTerm);
                   setFromAccountFormData({
@@ -433,6 +434,7 @@ export default function TransfersPage() {
                 searchPlaceholder="Type to search accounts..."
                 required
                 className="w-full"
+                allowClear
                 onCreateNew={(searchTerm) => {
                   setPendingToAccountName(searchTerm);
                   setToAccountFormData({
@@ -486,6 +488,7 @@ export default function TransfersPage() {
                 placeholder="Select transaction charges ledger (optional)"
                 searchPlaceholder="Type to search transaction charges ledgers..."
                 className="w-full"
+                allowClear
                 onCreateNew={(searchTerm) => {
                   setPendingChargeLedgerName(searchTerm);
                   setChargeLedgerFormData({

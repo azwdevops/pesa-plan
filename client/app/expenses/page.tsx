@@ -566,18 +566,18 @@ export default function ExpensesPage() {
               <div className="grid gap-8 md:grid-cols-2">
                 {/* Pie Chart */}
                 <div className="flex items-center justify-center">
-                  <ResponsiveContainer width="100%" height={300}>
+                  <ResponsiveContainer width="100%" height={550}>
                     <PieChart>
                       <Pie
                         data={expensesByLedger}
                         cx="50%"
                         cy="50%"
-                        labelLine={false}
+                        labelLine={true}
                         label={(props: any) => {
                           const entry = expensesByLedger[props.index];
                           return entry ? `${entry.name}: ${entry.percentage}%` : "";
                         }}
-                        outerRadius={100}
+                        outerRadius={170}
                         fill="#8884d8"
                         dataKey="value"
                       >
@@ -717,6 +717,7 @@ export default function ExpensesPage() {
                 searchPlaceholder="Type to search expense categories..."
                 required
                 className="w-full"
+                allowClear
                 onCreateNew={handleCreateNewLedger}
                 createNewLabel={(searchTerm) => `Create "${searchTerm}" expense ledger`}
               />
@@ -755,6 +756,7 @@ export default function ExpensesPage() {
                 searchPlaceholder="Type to search accounts..."
                 required
                 className="w-full"
+                allowClear
                 onCreateNew={handleCreateNewAssetLedger}
                 createNewLabel={(searchTerm) => `Create "${searchTerm}" account`}
               />
@@ -811,6 +813,7 @@ export default function ExpensesPage() {
                 placeholder="Select transaction charges ledger (optional)"
                 searchPlaceholder="Type to search transaction charges ledgers..."
                 className="w-full"
+                allowClear
                 onCreateNew={handleCreateNewChargeLedger}
                 createNewLabel={(searchTerm) => `Create "${searchTerm}" transaction charges ledger`}
               />

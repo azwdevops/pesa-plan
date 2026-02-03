@@ -433,6 +433,7 @@ export default function LoansPage() {
                 searchPlaceholder="Type to search accounts..."
                 required
                 className="w-full"
+                allowClear
                 onCreateNew={handleCreateNewReceivingAccount}
                 createNewLabel={(searchTerm) => `Create "${searchTerm}" account`}
               />
@@ -471,6 +472,7 @@ export default function LoansPage() {
                 searchPlaceholder="Type to search accounts..."
                 required
                 className="w-full"
+                allowClear
                 onCreateNew={handleCreateNewLiability}
                 createNewLabel={(searchTerm) => `Create "${searchTerm}" liability account`}
               />
@@ -509,6 +511,7 @@ export default function LoansPage() {
                 searchPlaceholder="Type to search expense accounts..."
                 required={parseFloat(formData.interest_amount || "0") > 0}
                 className="w-full"
+                allowClear
                 onCreateNew={handleCreateNewInterestExpense}
                 createNewLabel={(searchTerm) => `Create "${searchTerm}" interest expense account`}
               />

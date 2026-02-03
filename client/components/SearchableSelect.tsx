@@ -19,6 +19,7 @@ interface SearchableSelectProps {
   disabled?: boolean;
   onCreateNew?: (searchTerm: string) => void; // Callback when "Create new" option is clicked
   createNewLabel?: (searchTerm: string) => string; // Custom label for create new option
+  allowClear?: boolean; // Allow clearing the selected value
 }
 
 export function SearchableSelect({
@@ -32,6 +33,7 @@ export function SearchableSelect({
   disabled = false,
   onCreateNew,
   createNewLabel,
+  allowClear = false,
 }: SearchableSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -155,6 +157,17 @@ export function SearchableSelect({
     }
   };
 
+  const handleClear = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (disabled || required) return;
+    onChange(typeof value === "number" ? 0 : "");
+    setIsOpen(false);
+    setSearchTerm("");
+    setFocusedIndex(-1);
+  };
+
+  const canClear = allowClear && !required && selectedOption && !disabled;
+
   return (
     <div ref={containerRef} className={`relative ${className}`}>
       {/* Trigger Button */}
@@ -168,23 +181,47 @@ export function SearchableSelect({
             : "cursor-pointer hover:border-zinc-400 dark:hover:border-zinc-600"
         } ${!selectedOption ? "text-zinc-500 dark:text-zinc-400" : ""}`}
       >
-        <div className="flex items-center justify-between">
-          <span className="truncate">{displayValue}</span>
-          <svg
-            className={`h-5 w-5 text-zinc-400 transition-transform ${
-              isOpen ? "rotate-180" : ""
-            }`}
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M19 9l-7 7-7-7"
-            />
-          </svg>
+        <div className="flex items-center justify-between gap-2">
+          <span className="truncate flex-1">{displayValue}</span>
+          <div className="flex items-center gap-1">
+            {canClear && (
+              <button
+                type="button"
+                onClick={handleClear}
+                className="rounded p-0.5 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+                aria-label="Clear selection"
+              >
+                <svg
+                  className="h-4 w-4 text-zinc-500 dark:text-zinc-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            )}
+            <svg
+              className={`h-5 w-5 text-zinc-400 transition-transform ${
+                isOpen ? "rotate-180" : ""
+              }`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M19 9l-7 7-7-7"
+              />
+            </svg>
+          </div>
         </div>
       </button>
 

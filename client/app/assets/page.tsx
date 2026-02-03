@@ -535,6 +535,7 @@ export default function AssetsPage() {
                 searchPlaceholder="Type to search assets..."
                 required
                 className="w-full"
+                allowClear
                 onCreateNew={handleCreateNewLedger}
                 createNewLabel={(searchTerm) => `Create "${searchTerm}" asset`}
               />
@@ -573,6 +574,7 @@ export default function AssetsPage() {
                 searchPlaceholder="Type to search accounts..."
                 required
                 className="w-full"
+                allowClear
                 onCreateNew={handleCreateNewPayingAccount}
                 createNewLabel={(searchTerm) => `Create "${searchTerm}" account`}
               />
@@ -629,6 +631,7 @@ export default function AssetsPage() {
                 placeholder="Select transaction charges ledger (optional)"
                 searchPlaceholder="Type to search transaction charges ledgers..."
                 className="w-full"
+                allowClear
                 onCreateNew={handleCreateNewChargeLedger}
                 createNewLabel={(searchTerm) => `Create "${searchTerm}" transaction charges ledger`}
               />

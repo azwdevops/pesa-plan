@@ -290,18 +290,18 @@ export default function DashboardPage() {
               <div className="grid gap-8 md:grid-cols-2">
                 {/* Pie Chart */}
                 <div className="flex items-center justify-center">
-                  <ResponsiveContainer width="100%" height={300}>
+                  <ResponsiveContainer width="100%" height={550}>
                     <PieChart>
                       <Pie
                         data={expensesBySpendingType}
                         cx="50%"
                         cy="50%"
-                        labelLine={false}
+                        labelLine={true}
                         label={(props: any) => {
                           const entry = expensesBySpendingType[props.index];
                           return entry ? `${entry.name}: ${entry.percentage}%` : "";
                         }}
-                        outerRadius={100}
+                        outerRadius={170}
                         fill="#8884d8"
                         dataKey="value"
                       >

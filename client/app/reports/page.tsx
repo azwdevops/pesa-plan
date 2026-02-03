@@ -75,11 +75,13 @@ export default function ReportsPage() {
     formatDateForAPI(startDate),
     formatDateForAPI(endDate)
   );
-  const { data: ledgerReport, isLoading: ledgerReportLoading } = useLedgerReport(
+  const ledgerReportQuery = useLedgerReport(
     selectedLedgerId,
     formatDateForAPI(ledgerStartDate),
     formatDateForAPI(ledgerEndDate)
   );
+  const { data: ledgerReport, isLoading: ledgerReportLoading } = ledgerReportQuery;
+  const refetchLedgerReport = ledgerReportQuery.refetch;
   const { data: parentGroups = [] } = useParentLedgerGroups();
 
   useEffect(() => {

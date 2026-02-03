@@ -604,15 +604,15 @@ export default function ExpensesPage() {
           </div>
 
           {/* Expenses by Ledger Chart */}
-          <div className="mb-8 rounded-xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-            <div className="mb-6">
-              <div className="mb-4 flex items-center justify-between">
+          <div className="mb-8 rounded-xl border border-zinc-200 bg-white p-4 sm:p-6 md:p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+            <div className="mb-3">
+              <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <h2 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-100">
                   Expenses by Ledger
                 </h2>
               
                 {/* Period Filter */}
-                <div className="flex items-center gap-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => setPeriodType("month")}
@@ -644,11 +644,11 @@ export default function ExpensesPage() {
                       }}
                       dateFormat="MMMM yyyy"
                       showMonthYearPicker
-                      className="w-48 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+                      className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 sm:w-48"
                       popperPlacement="bottom-start"
                     />
                   ) : (
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                       <DatePicker
                         selected={customStartDate}
                         onChange={(date: Date | null) => setCustomStartDate(date)}
@@ -657,10 +657,10 @@ export default function ExpensesPage() {
                         endDate={customEndDate}
                         dateFormat="dd/MM/yyyy"
                         placeholderText="Start Date"
-                        className="w-40 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+                        className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 sm:w-40"
                         popperPlacement="bottom-start"
                       />
-                      <span className="text-zinc-600 dark:text-zinc-400">to</span>
+                      <span className="text-center text-zinc-600 dark:text-zinc-400 sm:text-left">to</span>
                       <DatePicker
                         selected={customEndDate}
                         onChange={(date: Date | null) => setCustomEndDate(date)}
@@ -670,7 +670,7 @@ export default function ExpensesPage() {
                         minDate={customStartDate || undefined}
                         dateFormat="dd/MM/yyyy"
                         placeholderText="End Date"
-                        className="w-40 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+                        className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 sm:w-40"
                         popperPlacement="bottom-start"
                       />
                     </div>
@@ -710,21 +710,22 @@ export default function ExpensesPage() {
                 <p className="text-zinc-600 dark:text-zinc-400">Loading expense breakdown...</p>
               </div>
             ) : expensesByLedger.length > 0 ? (
-              <div className="grid gap-8 md:grid-cols-2">
+              <div className="flex flex-col gap-8">
                 {/* Pie Chart */}
-                <div className="flex items-center justify-center">
-                  <ResponsiveContainer width="100%" height={550}>
-                    <PieChart>
-                      <Pie
-                        data={expensesByLedger}
-                        cx="50%"
-                        cy="50%"
-                        labelLine={true}
-                        label={(props: any) => {
-                          const entry = expensesByLedger[props.index];
-                          return entry ? `${entry.name}: ${entry.percentage}%` : "";
-                        }}
-                        outerRadius={170}
+                <div className="flex items-center justify-center min-h-0 p-0 sm:p-2 md:p-2">
+                  <div className="w-full h-[450px] sm:h-[550px] md:h-[650px] lg:h-[700px] xl:h-[750px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart margin={{ top: 0, right: 15, bottom: 10, left: 15 }}>
+                        <Pie
+                          data={expensesByLedger}
+                          cx="50%"
+                          cy="40%"
+                          labelLine={true}
+                          label={(props: any) => {
+                            const entry = expensesByLedger[props.index];
+                            return entry ? `${entry.name}: ${entry.percentage}%` : "";
+                          }}
+                          outerRadius="70%"
                         fill="#8884d8"
                         dataKey="value"
                       >
@@ -752,15 +753,16 @@ export default function ExpensesPage() {
                       />
                     </PieChart>
                   </ResponsiveContainer>
+                  </div>
                 </div>
 
                 {/* Legend with amounts */}
                 <div className="flex flex-col justify-center">
-                  <div className="space-y-3">
+                  <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
                     {expensesByLedger.map((item, index) => (
                       <div
                         key={item.name}
-                        className="flex items-center justify-between rounded-lg border border-zinc-200 p-4 dark:border-zinc-700"
+                        className="flex items-center justify-between rounded-lg border border-zinc-200 p-3 dark:border-zinc-700"
                       >
                         <div className="flex items-center gap-3">
                           <div

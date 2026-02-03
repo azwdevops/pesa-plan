@@ -475,8 +475,8 @@ export default function IncomePage() {
           </div>
 
           {/* Incomes by Ledger Chart */}
-          <div className="mb-8 rounded-xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-            <div className="mb-6">
+          <div className="mb-8 rounded-xl border border-zinc-200 bg-white p-4 sm:p-6 md:p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+            <div className="mb-3">
               <div className="mb-4 flex items-center justify-between">
                 <h2 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-100">
                   Incomes by Ledger
@@ -581,21 +581,22 @@ export default function IncomePage() {
                 <p className="text-zinc-600 dark:text-zinc-400">Loading income breakdown...</p>
               </div>
             ) : incomesByLedger.length > 0 ? (
-              <div className="grid gap-8 md:grid-cols-2">
+              <div className="flex flex-col gap-8">
                 {/* Pie Chart */}
-                <div className="flex items-center justify-center">
-                  <ResponsiveContainer width="100%" height={550}>
-                    <PieChart>
-                      <Pie
-                        data={incomesByLedger}
-                        cx="50%"
-                        cy="50%"
-                        labelLine={true}
-                        label={(props: any) => {
-                          const entry = incomesByLedger[props.index];
-                          return entry ? `${entry.name}: ${entry.percentage}%` : "";
-                        }}
-                        outerRadius={170}
+                <div className="flex items-center justify-center min-h-0 p-0 sm:p-2 md:p-4">
+                  <div className="w-full h-[450px] sm:h-[550px] md:h-[650px] lg:h-[700px] xl:h-[750px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart margin={{ top: 15, right: 15, bottom: 15, left: 15 }}>
+                        <Pie
+                          data={incomesByLedger}
+                          cx="50%"
+                          cy="50%"
+                          labelLine={true}
+                          label={(props: any) => {
+                            const entry = incomesByLedger[props.index];
+                            return entry ? `${entry.name}: ${entry.percentage}%` : "";
+                          }}
+                          outerRadius="70%"
                         fill="#8884d8"
                         dataKey="value"
                       >
@@ -623,15 +624,16 @@ export default function IncomePage() {
                       />
                     </PieChart>
                   </ResponsiveContainer>
+                  </div>
                 </div>
 
                 {/* Legend with amounts */}
                 <div className="flex flex-col justify-center">
-                  <div className="space-y-3">
+                  <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
                     {incomesByLedger.map((item, index) => (
                       <div
                         key={item.name}
-                        className="flex items-center justify-between rounded-lg border border-zinc-200 p-4 dark:border-zinc-700"
+                        className="flex items-center justify-between rounded-lg border border-zinc-200 p-3 dark:border-zinc-700"
                       >
                         <div className="flex items-center gap-3">
                           <div

@@ -1036,9 +1036,9 @@ export default function ReportsPage() {
             <p className="text-zinc-600 dark:text-zinc-400">Loading ledger report...</p>
           </div>
         ) : ledgerReport ? (
-          <div className="flex max-h-[calc(100vh-12rem)] flex-col space-y-6 overflow-hidden">
+          <div className="space-y-4">
             {/* Report Header */}
-            <div className="flex-shrink-0 rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-700 dark:bg-zinc-800">
+            <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-700 dark:bg-zinc-800">
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
                   <p className="text-sm text-zinc-600 dark:text-zinc-400">Ledger</p>
@@ -1069,7 +1069,7 @@ export default function ReportsPage() {
             </div>
 
             {/* Summary */}
-            <div className="flex-shrink-0 grid gap-4 md:grid-cols-4">
+            <div className="grid gap-4 md:grid-cols-4">
               <div className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900">
                 <p className="text-sm text-zinc-600 dark:text-zinc-400">Opening Balance</p>
                 <p className={`text-lg font-semibold ${
@@ -1122,24 +1122,23 @@ export default function ReportsPage() {
 
             {/* Transactions Table */}
             {ledgerReport.entries.length > 0 ? (
-              <div className="flex-1 min-h-0 overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-700">
-                <div className="h-full overflow-y-auto overflow-x-auto">
-                  <table className="w-full">
-                  <thead className="border-b border-zinc-200 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800">
+              <div className="overflow-x-auto max-h-[60vh]">
+                <table className="w-full text-sm border border-zinc-300 dark:border-zinc-500 border-separate border-spacing-0">
+                  <thead className="border-b-2 border-zinc-300 bg-zinc-50 dark:border-zinc-500 dark:bg-zinc-800/50 sticky top-0">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-zinc-700 dark:text-zinc-300">
+                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-zinc-700 dark:text-zinc-300 border-r border-zinc-300 dark:border-zinc-500">
                         Date
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-zinc-700 dark:text-zinc-300">
+                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-zinc-700 dark:text-zinc-300 border-r border-zinc-300 dark:border-zinc-500">
                         Reference
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-zinc-700 dark:text-zinc-300">
+                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-zinc-700 dark:text-zinc-300 border-r border-zinc-300 dark:border-zinc-500">
                         Type
                       </th>
-                      <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-zinc-700 dark:text-zinc-300">
+                      <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-zinc-700 dark:text-zinc-300 border-r border-zinc-300 dark:border-zinc-500">
                         Debit
                       </th>
-                      <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-zinc-700 dark:text-zinc-300">
+                      <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-zinc-700 dark:text-zinc-300 border-r border-zinc-300 dark:border-zinc-500">
                         Credit
                       </th>
                       <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-zinc-700 dark:text-zinc-300">
@@ -1147,14 +1146,14 @@ export default function ReportsPage() {
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-zinc-200 dark:divide-zinc-700">
+                  <tbody>
                     {/* Opening Balance Row */}
-                    <tr className="bg-zinc-50 dark:bg-zinc-800/50">
-                      <td colSpan={3} className="px-4 py-3 text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                    <tr className="bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-300 dark:border-zinc-500">
+                      <td colSpan={3} className="px-4 py-3 text-sm font-medium text-zinc-900 dark:text-zinc-100 border-r border-zinc-300 dark:border-zinc-500">
                         Opening Balance
                       </td>
-                      <td className="px-4 py-3 text-right text-sm text-zinc-600 dark:text-zinc-400">-</td>
-                      <td className="px-4 py-3 text-right text-sm text-zinc-600 dark:text-zinc-400">-</td>
+                      <td className="px-4 py-3 text-right text-sm text-zinc-600 dark:text-zinc-400 border-r border-zinc-300 dark:border-zinc-500">-</td>
+                      <td className="px-4 py-3 text-right text-sm text-zinc-600 dark:text-zinc-400 border-r border-zinc-300 dark:border-zinc-500">-</td>
                       <td className={`px-4 py-3 text-right text-sm font-semibold ${
                         (ledgerReport.opening_balance ?? 0) >= 0
                           ? "text-blue-600 dark:text-blue-400"
@@ -1170,22 +1169,22 @@ export default function ReportsPage() {
                     {ledgerReport.entries.map((entry, index) => (
                       <tr
                         key={`${entry.transaction_id}-${index}`}
-                        className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
+                        className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 border-b border-zinc-300 dark:border-zinc-500"
                       >
-                        <td className="whitespace-nowrap px-4 py-3 text-sm text-zinc-900 dark:text-zinc-100">
+                        <td className="whitespace-nowrap px-4 py-3 text-sm text-zinc-900 dark:text-zinc-100 border-r border-zinc-300 dark:border-zinc-500">
                           {new Date(entry.transaction_date).toLocaleDateString("en-GB", {
                             day: "2-digit",
                             month: "2-digit",
                             year: "numeric",
                           })}
                         </td>
-                        <td className="px-4 py-3 text-sm text-zinc-600 dark:text-zinc-400">
+                        <td className="px-4 py-3 text-sm text-zinc-600 dark:text-zinc-400 border-r border-zinc-300 dark:border-zinc-500">
                           {entry.reference || "-"}
                         </td>
-                        <td className="px-4 py-3 text-sm text-zinc-600 dark:text-zinc-400">
+                        <td className="px-4 py-3 text-sm text-zinc-600 dark:text-zinc-400 border-r border-zinc-300 dark:border-zinc-500">
                           {entry.transaction_type}
                         </td>
-                        <td className="whitespace-nowrap px-4 py-3 text-right text-sm text-green-600 dark:text-green-400">
+                        <td className="whitespace-nowrap px-4 py-3 text-right text-sm text-green-600 dark:text-green-400 border-r border-zinc-300 dark:border-zinc-500">
                           {entry.entry_type === "DEBIT"
                             ? Number(entry.amount).toLocaleString("en-US", {
                                 minimumFractionDigits: 2,
@@ -1194,7 +1193,7 @@ export default function ReportsPage() {
                               })
                             : "-"}
                         </td>
-                        <td className="whitespace-nowrap px-4 py-3 text-right text-sm text-red-600 dark:text-red-400">
+                        <td className="whitespace-nowrap px-4 py-3 text-right text-sm text-red-600 dark:text-red-400 border-r border-zinc-300 dark:border-zinc-500">
                           {entry.entry_type === "CREDIT"
                             ? Number(entry.amount).toLocaleString("en-US", {
                                 minimumFractionDigits: 2,
@@ -1218,7 +1217,6 @@ export default function ReportsPage() {
                     ))}
                   </tbody>
                 </table>
-                </div>
               </div>
             ) : (
               <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-8 text-center dark:border-zinc-700 dark:bg-zinc-800">

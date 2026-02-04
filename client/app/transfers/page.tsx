@@ -58,6 +58,7 @@ export default function TransfersPage() {
     charge_ledger_id: 0,
     charge_amount: "",
     amount: "",
+    reference: "",
   });
   const [fromAccountFormData, setFromAccountFormData] = useState<LedgerCreate>({
     name: "",
@@ -175,7 +176,10 @@ export default function TransfersPage() {
     try {
       await createTransactionMutation.mutateAsync({
         transaction_date: transactionDate,
-        reference: null,
+        reference:
+          formData.reference && formData.reference.trim() !== ""
+            ? formData.reference.trim()
+            : null,
         transaction_type: "JOURNAL",
         total_amount: totalCreditAmount,
         items: items,
@@ -189,6 +193,7 @@ export default function TransfersPage() {
         charge_ledger_id: 0,
         charge_amount: "",
         amount: "",
+        reference: "",
       });
       setShowTransferDialog(false);
       alert("Transfer recorded successfully!");
@@ -373,6 +378,24 @@ export default function TransfersPage() {
                 required
                 popperPlacement="bottom-start"
                 popperClassName="react-datepicker-popper-no-backdrop"
+              />
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Narration (optional)
+              </label>
+              <input
+                type="text"
+                value={formData.reference}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    reference: e.target.value,
+                  })
+                }
+                placeholder="What is this transfer about?"
+                className="w-full rounded-lg border border-zinc-300 bg-white px-4 py-2 text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
               />
             </div>
 

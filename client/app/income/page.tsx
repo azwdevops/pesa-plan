@@ -67,6 +67,7 @@ export default function IncomePage() {
     income_ledger_id: 0,
     receiving_account_id: 0,
     amount: "",
+    reference: "",
   });
   const [ledgerFormData, setLedgerFormData] = useState<LedgerCreate>({
     name: "",
@@ -286,7 +287,10 @@ export default function IncomePage() {
       // Total amount is automatically calculated from the items
       await createTransactionMutation.mutateAsync({
         transaction_date: transactionDate,
-        reference: null,
+        reference:
+          formData.reference && formData.reference.trim() !== ""
+            ? formData.reference.trim()
+            : null,
         transaction_type: "MONEY_RECEIVED",
         total_amount: amount,
         items: [
@@ -309,6 +313,7 @@ export default function IncomePage() {
         income_ledger_id: 0,
         receiving_account_id: 0,
         amount: "",
+        reference: "",
       });
       setShowPostIncomeDialog(false);
       alert("Income posted successfully!");
@@ -718,6 +723,24 @@ export default function IncomePage() {
                 required
                 popperPlacement="bottom-start"
                 popperClassName="react-datepicker-popper-no-backdrop"
+              />
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Narration (optional)
+              </label>
+              <input
+                type="text"
+                value={formData.reference}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    reference: e.target.value,
+                  })
+                }
+                placeholder="What is this income about?"
+                className="w-full rounded-lg border border-zinc-300 bg-white px-4 py-2 text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
               />
             </div>
 

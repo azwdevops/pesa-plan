@@ -61,6 +61,7 @@ export default function LoansPage() {
     interest_expense_account_id: 0,
     principal_amount: "",
     interest_amount: "",
+    reference: "",
   });
   const [receivingAccountFormData, setReceivingAccountFormData] = useState<LedgerCreate>({
     name: "",
@@ -180,7 +181,10 @@ export default function LoansPage() {
       // Total debits = principal + interest, Total credits = principal + interest (balanced)
       await createTransactionMutation.mutateAsync({
         transaction_date: transactionDate,
-        reference: null,
+        reference:
+          formData.reference && formData.reference.trim() !== ""
+            ? formData.reference.trim()
+            : null,
         transaction_type: "JOURNAL",
         total_amount: totalLiability,
         items: items,
@@ -194,6 +198,7 @@ export default function LoansPage() {
         interest_expense_account_id: 0,
         principal_amount: "",
         interest_amount: "",
+        reference: "",
       });
       setShowPostLoanDialog(false);
       alert("Loan recorded successfully!");
@@ -408,6 +413,24 @@ export default function LoansPage() {
                 required
                 popperPlacement="bottom-start"
                 popperClassName="react-datepicker-popper-no-backdrop"
+              />
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Narration (optional)
+              </label>
+              <input
+                type="text"
+                value={formData.reference}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    reference: e.target.value,
+                  })
+                }
+                placeholder="What is this loan transaction about?"
+                className="w-full rounded-lg border border-zinc-300 bg-white px-4 py-2 text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
               />
             </div>
 

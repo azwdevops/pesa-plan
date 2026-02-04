@@ -1188,148 +1188,294 @@ export default function ReportsPage() {
 
             {/* Transactions Table */}
             {ledgerReport.entries.length > 0 ? (
-              <div className="overflow-x-auto max-h-[60vh]">
-                <table className="w-full text-sm border border-zinc-300 dark:border-zinc-500 border-separate border-spacing-0">
-                  <thead className="border-b-2 border-zinc-300 bg-zinc-50 dark:border-zinc-500 dark:bg-zinc-800/50 sticky top-0">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-zinc-700 dark:text-zinc-300 border-r border-zinc-300 dark:border-zinc-500">
-                        Date
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-zinc-700 dark:text-zinc-300 border-r border-zinc-300 dark:border-zinc-500">
-                        Reference
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-zinc-700 dark:text-zinc-300 border-r border-zinc-300 dark:border-zinc-500">
-                        Type
-                      </th>
-                      <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-zinc-700 dark:text-zinc-300 border-r border-zinc-300 dark:border-zinc-500">
-                        Debit
-                      </th>
-                      <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-zinc-700 dark:text-zinc-300 border-r border-zinc-300 dark:border-zinc-500">
-                        Credit
-                      </th>
-                      <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-zinc-700 dark:text-zinc-300">
-                        Balance
-                      </th>
-                      <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-zinc-700 dark:text-zinc-300">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {/* Opening Balance Row */}
-                    <tr className="bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-300 dark:border-zinc-500">
-                      <td colSpan={3} className="px-4 py-3 text-sm font-medium text-zinc-900 dark:text-zinc-100 border-r border-zinc-300 dark:border-zinc-500">
-                        Opening Balance
-                      </td>
-                      <td className="px-4 py-3 text-right text-sm text-zinc-600 dark:text-zinc-400 border-r border-zinc-300 dark:border-zinc-500">-</td>
-                      <td className="px-4 py-3 text-right text-sm text-zinc-600 dark:text-zinc-400 border-r border-zinc-300 dark:border-zinc-500">-</td>
-                      <td className={`px-4 py-3 text-right text-sm font-semibold ${
-                        (ledgerReport.opening_balance ?? 0) >= 0
-                          ? "text-blue-600 dark:text-blue-400"
-                          : "text-red-600 dark:text-red-400"
-                      }`}>
-                        {Number(ledgerReport.opening_balance ?? 0).toLocaleString("en-US", {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                          useGrouping: true,
-                        })}
-                      </td>
-                      <td className="px-4 py-3 text-center border-r border-zinc-300 dark:border-zinc-500">-</td>
-                    </tr>
-                    {ledgerReport.entries.map((entry, index) => (
-                      <tr
-                        key={`${entry.transaction_id}-${index}`}
-                        className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 border-b border-zinc-300 dark:border-zinc-500"
-                      >
-                        <td className="whitespace-nowrap px-4 py-3 text-sm text-zinc-900 dark:text-zinc-100 border-r border-zinc-300 dark:border-zinc-500">
-                          {new Date(entry.transaction_date).toLocaleDateString("en-GB", {
-                            day: "2-digit",
-                            month: "2-digit",
-                            year: "numeric",
-                          })}
+              <>
+                {/* Desktop Table View */}
+                <div className="hidden md:block overflow-x-auto overflow-y-auto max-h-[50vh] -mx-6 px-6">
+                  <table className="w-full min-w-[800px] text-sm border border-zinc-300 dark:border-zinc-500 border-separate border-spacing-0">
+                    <thead className="border-b-2 border-zinc-300 bg-zinc-50 dark:border-zinc-500 dark:bg-zinc-800/50 sticky top-0 z-10">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-zinc-700 dark:text-zinc-300 border-r border-zinc-300 dark:border-zinc-500">
+                          Date
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-zinc-700 dark:text-zinc-300 border-r border-zinc-300 dark:border-zinc-500">
+                          Reference
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-zinc-700 dark:text-zinc-300 border-r border-zinc-300 dark:border-zinc-500">
+                          Type
+                        </th>
+                        <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-zinc-700 dark:text-zinc-300 border-r border-zinc-300 dark:border-zinc-500">
+                          Debit
+                        </th>
+                        <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-zinc-700 dark:text-zinc-300 border-r border-zinc-300 dark:border-zinc-500">
+                          Credit
+                        </th>
+                        <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-zinc-700 dark:text-zinc-300">
+                          Balance
+                        </th>
+                        <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-zinc-700 dark:text-zinc-300">
+                          Actions
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {/* Opening Balance Row */}
+                      <tr className="bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-300 dark:border-zinc-500">
+                        <td colSpan={3} className="px-4 py-3 text-sm font-medium text-zinc-900 dark:text-zinc-100 border-r border-zinc-300 dark:border-zinc-500">
+                          Opening Balance
                         </td>
-                        <td className="px-4 py-3 text-sm text-zinc-600 dark:text-zinc-400 border-r border-zinc-300 dark:border-zinc-500">
-                          {entry.reference || "-"}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-zinc-600 dark:text-zinc-400 border-r border-zinc-300 dark:border-zinc-500">
-                          {entry.transaction_type}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-3 text-right text-sm text-green-600 dark:text-green-400 border-r border-zinc-300 dark:border-zinc-500">
-                          {entry.entry_type === "DEBIT"
-                            ? Number(entry.amount).toLocaleString("en-US", {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
-                                useGrouping: true,
-                              })
-                            : "-"}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-3 text-right text-sm text-red-600 dark:text-red-400 border-r border-zinc-300 dark:border-zinc-500">
-                          {entry.entry_type === "CREDIT"
-                            ? Number(entry.amount).toLocaleString("en-US", {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
-                                useGrouping: true,
-                              })
-                            : "-"}
-                        </td>
-                        <td className={`whitespace-nowrap px-4 py-3 text-right text-sm font-semibold ${
-                          (entry.running_balance ?? 0) >= 0
+                        <td className="px-4 py-3 text-right text-sm text-zinc-600 dark:text-zinc-400 border-r border-zinc-300 dark:border-zinc-500">-</td>
+                        <td className="px-4 py-3 text-right text-sm text-zinc-600 dark:text-zinc-400 border-r border-zinc-300 dark:border-zinc-500">-</td>
+                        <td className={`px-4 py-3 text-right text-sm font-semibold ${
+                          (ledgerReport.opening_balance ?? 0) >= 0
                             ? "text-blue-600 dark:text-blue-400"
                             : "text-red-600 dark:text-red-400"
                         }`}>
-                          {Number(entry.running_balance ?? 0).toLocaleString("en-US", {
+                          {Number(ledgerReport.opening_balance ?? 0).toLocaleString("en-US", {
                             minimumFractionDigits: 2,
                             maximumFractionDigits: 2,
                             useGrouping: true,
                           })}
                         </td>
-                        <td className="px-4 py-3 text-center border-r border-zinc-300 dark:border-zinc-500">
-                          <div className="flex items-center justify-center gap-2">
-                            <button
-                              onClick={() => handleEditTransaction(entry.transaction_id)}
-                              className="rounded p-1.5 text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20 transition-colors"
-                              title="Edit transaction"
-                            >
-                              <svg
-                                className="h-4 w-4"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                                />
-                              </svg>
-                            </button>
-                            <button
-                              onClick={() => handleDeleteTransaction(entry.transaction_id)}
-                              className="rounded p-1.5 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20 transition-colors"
-                              title="Delete transaction"
-                            >
-                              <svg
-                                className="h-4 w-4"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                                />
-                              </svg>
-                            </button>
-                          </div>
-                        </td>
+                        <td className="px-4 py-3 text-center">-</td>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                      {ledgerReport.entries.map((entry, index) => (
+                        <tr
+                          key={`${entry.transaction_id}-${index}`}
+                          className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 border-b border-zinc-300 dark:border-zinc-500"
+                        >
+                          <td className="whitespace-nowrap px-4 py-3 text-sm text-zinc-900 dark:text-zinc-100 border-r border-zinc-300 dark:border-zinc-500">
+                            {new Date(entry.transaction_date).toLocaleDateString("en-GB", {
+                              day: "2-digit",
+                              month: "2-digit",
+                              year: "numeric",
+                            })}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-zinc-600 dark:text-zinc-400 border-r border-zinc-300 dark:border-zinc-500">
+                            {entry.reference || "-"}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-zinc-600 dark:text-zinc-400 border-r border-zinc-300 dark:border-zinc-500">
+                            {entry.transaction_type}
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-3 text-right text-sm text-green-600 dark:text-green-400 border-r border-zinc-300 dark:border-zinc-500">
+                            {entry.entry_type === "DEBIT"
+                              ? Number(entry.amount).toLocaleString("en-US", {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                  useGrouping: true,
+                                })
+                              : "-"}
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-3 text-right text-sm text-red-600 dark:text-red-400 border-r border-zinc-300 dark:border-zinc-500">
+                            {entry.entry_type === "CREDIT"
+                              ? Number(entry.amount).toLocaleString("en-US", {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                  useGrouping: true,
+                                })
+                              : "-"}
+                          </td>
+                          <td className={`whitespace-nowrap px-4 py-3 text-right text-sm font-semibold ${
+                            (entry.running_balance ?? 0) >= 0
+                              ? "text-blue-600 dark:text-blue-400"
+                              : "text-red-600 dark:text-red-400"
+                          }`}>
+                            {Number(entry.running_balance ?? 0).toLocaleString("en-US", {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                              useGrouping: true,
+                            })}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <div className="flex items-center justify-center gap-2">
+                              <button
+                                onClick={() => handleEditTransaction(entry.transaction_id)}
+                                className="rounded p-1.5 text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20 transition-colors"
+                                title="Edit transaction"
+                              >
+                                <svg
+                                  className="h-4 w-4"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                                  />
+                                </svg>
+                              </button>
+                              <button
+                                onClick={() => handleDeleteTransaction(entry.transaction_id)}
+                                className="rounded p-1.5 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20 transition-colors"
+                                title="Delete transaction"
+                              >
+                                <svg
+                                  className="h-4 w-4"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                                  />
+                                </svg>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Mobile Card View */}
+                <div className="md:hidden space-y-4 overflow-y-auto max-h-[50vh] -mx-6 px-6">
+                  {/* Opening Balance Card */}
+                  <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-700 dark:bg-zinc-800/50">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Opening Balance</span>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs text-zinc-600 dark:text-zinc-400">Debit</span>
+                        <span className="text-sm text-zinc-600 dark:text-zinc-400">-</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs text-zinc-600 dark:text-zinc-400">Credit</span>
+                        <span className="text-sm text-zinc-600 dark:text-zinc-400">-</span>
+                      </div>
+                      <div className="flex justify-between items-center pt-2 border-t border-zinc-300 dark:border-zinc-500">
+                        <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">Balance</span>
+                        <span className={`text-sm font-semibold ${
+                          (ledgerReport.opening_balance ?? 0) >= 0
+                            ? "text-blue-600 dark:text-blue-400"
+                            : "text-red-600 dark:text-red-400"
+                        }`}>
+                          KSh {Number(ledgerReport.opening_balance ?? 0).toLocaleString("en-US", {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                            useGrouping: true,
+                          })}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Transaction Cards */}
+                  {ledgerReport.entries.map((entry, index) => (
+                    <div
+                      key={`${entry.transaction_id}-${index}`}
+                      className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900"
+                    >
+                      <div className="flex items-center justify-between mb-3">
+                        <div>
+                          <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                            {new Date(entry.transaction_date).toLocaleDateString("en-GB", {
+                              day: "2-digit",
+                              month: "2-digit",
+                              year: "numeric",
+                            })}
+                          </p>
+                          {entry.reference && (
+                            <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-1">
+                              Ref: {entry.reference}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleEditTransaction(entry.transaction_id)}
+                            className="rounded p-1.5 text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20 transition-colors"
+                            title="Edit transaction"
+                          >
+                            <svg
+                              className="h-4 w-4"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                              />
+                            </svg>
+                          </button>
+                          <button
+                            onClick={() => handleDeleteTransaction(entry.transaction_id)}
+                            className="rounded p-1.5 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20 transition-colors"
+                            title="Delete transaction"
+                          >
+                            <svg
+                              className="h-4 w-4"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                              />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs text-zinc-600 dark:text-zinc-400">Type</span>
+                          <span className="text-sm text-zinc-600 dark:text-zinc-400">{entry.transaction_type}</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs text-zinc-600 dark:text-zinc-400">Debit</span>
+                          <span className="text-sm font-medium text-green-600 dark:text-green-400">
+                            {entry.entry_type === "DEBIT"
+                              ? `KSh ${Number(entry.amount).toLocaleString("en-US", {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                  useGrouping: true,
+                                })}`
+                              : "-"}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs text-zinc-600 dark:text-zinc-400">Credit</span>
+                          <span className="text-sm font-medium text-red-600 dark:text-red-400">
+                            {entry.entry_type === "CREDIT"
+                              ? `KSh ${Number(entry.amount).toLocaleString("en-US", {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                  useGrouping: true,
+                                })}`
+                              : "-"}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center pt-2 border-t border-zinc-300 dark:border-zinc-500">
+                          <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">Balance</span>
+                          <span className={`text-sm font-semibold ${
+                            (entry.running_balance ?? 0) >= 0
+                              ? "text-blue-600 dark:text-blue-400"
+                              : "text-red-600 dark:text-red-400"
+                          }`}>
+                            KSh {Number(entry.running_balance ?? 0).toLocaleString("en-US", {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                              useGrouping: true,
+                            })}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
             ) : (
               <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-8 text-center dark:border-zinc-700 dark:bg-zinc-800">
                 <p className="text-zinc-600 dark:text-zinc-400">

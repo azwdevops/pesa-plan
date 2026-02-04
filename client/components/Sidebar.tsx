@@ -39,12 +39,12 @@ export function Sidebar({ isOpen, onClose, isLoggedIn = false }: SidebarProps) {
 
       {/* Sidebar */}
       <aside
-        className={`fixed left-0 top-16 z-40 h-[calc(100vh-4rem)] w-64 transform border-r border-zinc-200 bg-white transition-transform duration-300 ease-in-out dark:border-zinc-800 dark:bg-zinc-900 ${
+        className={`fixed left-0 top-16 bottom-0 z-40 w-64 transform border-r border-zinc-200 bg-white transition-transform duration-300 ease-in-out dark:border-zinc-800 dark:bg-zinc-900 ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <nav className="flex h-full flex-col overflow-y-auto p-4">
-          <ul className="space-y-2">
+        <nav className="flex h-full flex-col overflow-y-auto overscroll-contain p-4">
+          <ul className="space-y-2 pb-6">
             {menuItems.map((item) => {
               const isActive = pathname === item.href;
               return (

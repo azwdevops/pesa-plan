@@ -12,6 +12,10 @@ export function useTrialBalance(startDate: string, endDate: string) {
       return getTrialBalance(token, startDate, endDate);
     },
     enabled: !!token && !!startDate && !!endDate,
+    staleTime: 0,
+    gcTime: 0,
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -29,6 +33,10 @@ export function useLedgerReport(
       return getLedgerReport(token, ledgerId, startDate, endDate);
     },
     enabled: !!token && !!ledgerId && !!startDate && !!endDate,
+    staleTime: 0,
+    gcTime: 0,
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
   });
 }
 

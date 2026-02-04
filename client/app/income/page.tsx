@@ -433,7 +433,7 @@ export default function IncomePage() {
         }`}
       >
         <div className="container mx-auto px-4 py-8 md:px-6 md:py-12">
-          <div className="mb-8 flex items-center justify-between">
+          <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-100">
                 Income
@@ -442,11 +442,11 @@ export default function IncomePage() {
                 Record and manage income transactions
               </p>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
               <button
                 onClick={handleRefresh}
                 disabled={isRefreshing}
-                className="flex items-center gap-2 rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
+                className="flex items-center justify-center gap-2 rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
                 title="Refresh data"
               >
                 <svg
@@ -475,15 +475,15 @@ export default function IncomePage() {
           </div>
 
           {/* Incomes by Ledger Chart */}
-          <div className="mb-8 rounded-xl border border-zinc-200 bg-white p-4 sm:p-6 md:p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <div className="mb-8 rounded-xl border border-zinc-200 bg-white p-4 sm:p-6 md:p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
             <div className="mb-3">
-              <div className="mb-4 flex items-center justify-between">
+              <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <h2 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-100">
                   Incomes by Ledger
                 </h2>
               
                 {/* Period Filter */}
-                <div className="flex items-center gap-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => setPeriodType("month")}
@@ -515,11 +515,11 @@ export default function IncomePage() {
                       }}
                       dateFormat="MMMM yyyy"
                       showMonthYearPicker
-                      className="w-48 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+                      className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 sm:w-48"
                       popperPlacement="bottom-start"
                     />
                   ) : (
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                       <DatePicker
                         selected={customStartDate}
                         onChange={(date: Date | null) => setCustomStartDate(date)}
@@ -528,10 +528,10 @@ export default function IncomePage() {
                         endDate={customEndDate}
                         dateFormat="dd/MM/yyyy"
                         placeholderText="Start Date"
-                        className="w-40 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+                        className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 sm:w-40"
                         popperPlacement="bottom-start"
                       />
-                      <span className="text-zinc-600 dark:text-zinc-400">to</span>
+                      <span className="text-center text-zinc-600 dark:text-zinc-400 sm:text-left">to</span>
                       <DatePicker
                         selected={customEndDate}
                         onChange={(date: Date | null) => setCustomEndDate(date)}
@@ -541,7 +541,7 @@ export default function IncomePage() {
                         minDate={customStartDate || undefined}
                         dateFormat="dd/MM/yyyy"
                         placeholderText="End Date"
-                        className="w-40 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+                        className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 sm:w-40"
                         popperPlacement="bottom-start"
                       />
                     </div>

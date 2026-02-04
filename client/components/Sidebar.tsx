@@ -43,7 +43,7 @@ export function Sidebar({ isOpen, onClose, isLoggedIn = false }: SidebarProps) {
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <nav className="flex h-full flex-col p-4">
+        <nav className="flex h-full flex-col overflow-y-auto p-4">
           <ul className="space-y-2">
             {menuItems.map((item) => {
               const isActive = pathname === item.href;

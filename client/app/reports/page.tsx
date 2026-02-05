@@ -11,10 +11,13 @@ import { SearchableSelect } from "@/components/SearchableSelect";
 import { useAuth } from "@/lib/hooks/use-auth";
 import { useSidebar } from "@/contexts/SidebarContext";
 import { useTrialBalance, useLedgerReport } from "@/lib/hooks/use-reports";
-import { useParentLedgerGroups, useLedgers } from "@/lib/hooks/use-accounts";
+import { useParentLedgerGroups, useLedgers, useLedgerGroups } from "@/lib/hooks/use-accounts";
 import { useUpdateTransaction, useDeleteTransaction, useTransaction } from "@/lib/hooks/use-transactions";
+import { useCreateLedger, useCreateLedgerGroup } from "@/lib/hooks/use-accounts";
 import { getTransaction } from "@/lib/api/transactions";
-import type { TransactionWithItems, TransactionUpdate } from "@/lib/api/transactions";
+import type { TransactionWithItems, TransactionUpdate, TransactionItem } from "@/lib/api/transactions";
+import type { LedgerCreate, LedgerGroupCreate } from "@/lib/api/accounts";
+import Link from "next/link";
 
 type PeriodType = "first_quarter" | "second_quarter" | "half_year" | "year" | "custom";
 
@@ -39,7 +42,31 @@ export default function ReportsPage() {
   const [editingTransactionId, setEditingTransactionId] = useState<number | null>(null);
   const [deletingTransactionId, setDeletingTransactionId] = useState<number | null>(null);
   const [editFormData, setEditFormData] = useState<TransactionUpdate | null>(null);
+  const [editItems, setEditItems] = useState<Array<{
+    ledger_id: number;
+    entry_type: "DEBIT" | "CREDIT";
+    amount: number | string;
+  }>>([]);
   const [editError, setEditError] = useState<string | null>(null);
+  const [showCreateLedgerDialog, setShowCreateLedgerDialog] = useState(false);
+  const [showLedgerGroupForm, setShowLedgerGroupForm] = useState(false);
+  const [pendingLedgerName, setPendingLedgerName] = useState("");
+  const [pendingLedgerGroupName, setPendingLedgerGroupName] = useState("");
+  const [creatingLedgerGroupFromForm, setCreatingLedgerGroupFromForm] = useState(false);
+  const [ledgerGroupFormData, setLedgerGroupFormData] = useState<LedgerGroupCreate>({
+    name: "",
+    parent_ledger_group_id: 0,
+    category: "other",
+  });
+  const [ledgerFormData, setLedgerFormData] = useState<LedgerCreate>({
+    name: "",
+    ledger_group_id: 0,
+    spending_type_id: null,
+  });
+  const { data: groups = [] } = useLedgerGroups();
+  const { data: parentGroups = [] } = useParentLedgerGroups();
+  const createLedgerMutation = useCreateLedger();
+  const createLedgerGroupMutation = useCreateLedgerGroup();
   const updateTransactionMutation = useUpdateTransaction();
   const deleteTransactionMutation = useDeleteTransaction();
   const { token } = useAuth();
@@ -82,7 +109,6 @@ export default function ReportsPage() {
   );
   const { data: ledgerReport, isLoading: ledgerReportLoading } = ledgerReportQuery;
   const refetchLedgerReport = ledgerReportQuery.refetch;
-  const { data: parentGroups = [] } = useParentLedgerGroups();
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -226,16 +252,17 @@ export default function ReportsPage() {
     if (!token) return;
     try {
       const transaction = await getTransaction(token, transactionId);
+      const items = transaction.items.map(item => ({
+        ledger_id: item.ledger_id,
+        entry_type: item.entry_type,
+        amount: Number(item.amount),
+      }));
       setEditFormData({
         transaction_date: transaction.transaction_date,
         reference: transaction.reference,
         transaction_type: transaction.transaction_type,
-        items: transaction.items.map(item => ({
-          ledger_id: item.ledger_id,
-          entry_type: item.entry_type,
-          amount: item.amount,
-        })),
       });
+      setEditItems(items);
       setEditingTransactionId(transactionId);
       setEditError(null);
     } catch (error) {
@@ -258,17 +285,172 @@ export default function ReportsPage() {
     }
   };
 
+  // Calculate totals for edit items
+  const editTotalDebits = editItems.reduce((sum, item) => {
+    if (item.entry_type === "DEBIT") {
+      const amount = typeof item.amount === "string" ? parseFloat(item.amount) || 0 : item.amount;
+      return sum + amount;
+    }
+    return sum;
+  }, 0);
+
+  const editTotalCredits = editItems.reduce((sum, item) => {
+    if (item.entry_type === "CREDIT") {
+      const amount = typeof item.amount === "string" ? parseFloat(item.amount) || 0 : item.amount;
+      return sum + amount;
+    }
+    return sum;
+  }, 0);
+
+  const editIsBalanced = Math.abs(editTotalDebits - editTotalCredits) < 0.01;
+  const editBalanceDifference = editTotalDebits - editTotalCredits;
+
+  const handleAddEditItem = () => {
+    setEditItems([...editItems, { ledger_id: 0, entry_type: "DEBIT", amount: "" }]);
+  };
+
+  const handleRemoveEditItem = (index: number) => {
+    if (editItems.length > 1) {
+      setEditItems(editItems.filter((_, i) => i !== index));
+    }
+  };
+
+  const handleUpdateEditItem = (index: number, field: keyof typeof editItems[0], value: number | string | "DEBIT" | "CREDIT") => {
+    const updated = [...editItems];
+    const item = { ...updated[index] };
+    
+    if (field === "entry_type") {
+      item.entry_type = value as "DEBIT" | "CREDIT";
+    } else if (field === "ledger_id") {
+      item.ledger_id = typeof value === "number" ? value : parseInt(value as string);
+    } else if (field === "amount") {
+      item.amount = value;
+    }
+    
+    updated[index] = item;
+    setEditItems(updated);
+  };
+
+  const handleCreateNewLedger = (searchTerm: string) => {
+    setPendingLedgerName(searchTerm);
+    setLedgerFormData({
+      name: searchTerm,
+      ledger_group_id: groups[0]?.id || 0,
+      spending_type_id: null,
+    });
+    setShowCreateLedgerDialog(true);
+  };
+
+  const handleCreateLedger = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setEditError(null);
+
+    if (!ledgerFormData.name.trim()) {
+      setEditError("Ledger name is required");
+      return;
+    }
+
+    if (!ledgerFormData.ledger_group_id) {
+      setEditError("Please select a ledger group");
+      return;
+    }
+
+    try {
+      const newLedger = await createLedgerMutation.mutateAsync(ledgerFormData);
+      
+      // Reset ledger form and close dialog
+      setLedgerFormData({
+        name: "",
+        ledger_group_id: groups[0]?.id || 0,
+        spending_type_id: null,
+      });
+      setShowCreateLedgerDialog(false);
+      setPendingLedgerName("");
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : "Failed to create ledger");
+    }
+  };
+
+  const handleLedgerGroupSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setEditError(null);
+
+    if (!ledgerGroupFormData.name.trim()) {
+      setEditError("Ledger group name is required");
+      return;
+    }
+
+    if (!ledgerGroupFormData.parent_ledger_group_id) {
+      setEditError("Please select a parent ledger group");
+      return;
+    }
+
+    try {
+      const newLedgerGroup = await createLedgerGroupMutation.mutateAsync(ledgerGroupFormData);
+      
+      // Auto-select the newly created ledger group
+      setLedgerFormData({
+        ...ledgerFormData,
+        ledger_group_id: newLedgerGroup.id,
+      });
+      
+      setShowLedgerGroupForm(false);
+      setLedgerGroupFormData({
+        name: "",
+        parent_ledger_group_id: 0,
+        category: "other",
+      });
+      setPendingLedgerGroupName("");
+      setCreatingLedgerGroupFromForm(false);
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : "Failed to create ledger group");
+    }
+  };
+
   const handleUpdateTransaction = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingTransactionId || !editFormData) return;
 
+    setEditError(null);
+
+    // Validate all items
+    for (let i = 0; i < editItems.length; i++) {
+      const item = editItems[i];
+      if (!item.ledger_id) {
+        setEditError(`Please select a ledger for row ${i + 1}`);
+        return;
+      }
+      const amount = typeof item.amount === "string" ? parseFloat(item.amount) : item.amount;
+      if (!amount || amount <= 0) {
+        setEditError(`Please enter a valid amount for row ${i + 1}`);
+        return;
+      }
+    }
+
+    // Validate balance
+    if (!editIsBalanced) {
+      setEditError(`Transaction is not balanced. Difference: KSh ${Math.abs(editBalanceDifference).toFixed(2)}`);
+      return;
+    }
+
+    // Convert items to TransactionItem format
+    const transactionItems: TransactionItem[] = editItems.map(item => ({
+      ledger_id: item.ledger_id,
+      entry_type: item.entry_type,
+      amount: typeof item.amount === "string" ? parseFloat(item.amount) : item.amount,
+    }));
+
     try {
       await updateTransactionMutation.mutateAsync({
         transactionId: editingTransactionId,
-        data: editFormData,
+        data: {
+          ...editFormData,
+          items: transactionItems,
+        },
       });
       setEditingTransactionId(null);
       setEditFormData(null);
+      setEditItems([]);
       setEditError(null);
       await refetchLedgerReport();
     } catch (error) {
@@ -1497,85 +1679,248 @@ export default function ReportsPage() {
         onClose={() => {
           setEditingTransactionId(null);
           setEditFormData(null);
+          setEditItems([]);
           setEditError(null);
         }}
         title="Edit Transaction"
-        size="lg"
+        size="xl"
       >
         {editFormData ? (
           <form onSubmit={handleUpdateTransaction} className="space-y-4">
-            <div>
-              <label className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                Transaction Date *
-              </label>
-              <DatePicker
-                selected={editFormData.transaction_date ? new Date(editFormData.transaction_date) : null}
-                onChange={(date: Date | null) => {
-                  if (date) {
-                    setEditFormData({
-                      ...editFormData,
-                      transaction_date: formatDateForAPI(date),
-                    });
-                  }
-                }}
-                dateFormat="dd/MM/yyyy"
-                className="w-full rounded-lg border border-zinc-300 bg-white px-4 py-2 text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
-                required
-                popperPlacement="bottom-start"
-              />
-            </div>
-
-            <div>
-              <label className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                Reference
-              </label>
-              <input
-                type="text"
-                value={editFormData.reference || ""}
-                onChange={(e) =>
-                  setEditFormData({ ...editFormData, reference: e.target.value || null })
-                }
-                className="w-full rounded-lg border border-zinc-300 bg-white px-4 py-2 text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
-                placeholder="Optional reference"
-              />
-            </div>
-
-            <div>
-              <label className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                Transaction Items
-              </label>
-              <div className="space-y-2 max-h-60 overflow-y-auto">
-                {editFormData.items?.map((item, index) => {
-                  const ledger = ledgers.find((l) => l.id === item.ledger_id);
-                  return (
-                    <div
-                      key={index}
-                      className="flex items-center gap-2 rounded-lg border border-zinc-200 p-3 dark:border-zinc-700"
-                    >
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
-                          {ledger?.name || `Ledger ID: ${item.ledger_id}`}
-                        </p>
-                        <p className="text-xs text-zinc-600 dark:text-zinc-400">
-                          {item.entry_type}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-                          KSh {Number(item.amount).toLocaleString("en-US", {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                            useGrouping: true,
-                          })}
-                        </p>
-                      </div>
-                    </div>
-                  );
-                })}
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <label className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                  Transaction Date *
+                </label>
+                <DatePicker
+                  selected={editFormData.transaction_date ? new Date(editFormData.transaction_date) : null}
+                  onChange={(date: Date | null) => {
+                    if (date) {
+                      setEditFormData({
+                        ...editFormData,
+                        transaction_date: formatDateForAPI(date),
+                      });
+                    }
+                  }}
+                  dateFormat="dd/MM/yyyy"
+                  className="w-full rounded-lg border border-zinc-300 bg-white px-4 py-2 text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+                  required
+                  popperPlacement="bottom-start"
+                  popperClassName="react-datepicker-popper-no-backdrop"
+                />
               </div>
-              <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
-                Note: Editing transaction items is not supported. Please delete and recreate the transaction if you need to change items.
-              </p>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                  Reference
+                </label>
+                <input
+                  type="text"
+                  value={editFormData.reference || ""}
+                  onChange={(e) =>
+                    setEditFormData({ ...editFormData, reference: e.target.value || null })
+                  }
+                  className="w-full rounded-lg border border-zinc-300 bg-white px-4 py-2 text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+                  placeholder="Optional reference"
+                />
+              </div>
+            </div>
+
+            <div>
+              <div className="mb-3 flex items-center justify-between">
+                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                  Transaction Items *
+                </label>
+                <button
+                  type="button"
+                  onClick={handleAddEditItem}
+                  className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
+                >
+                  + Add Entry
+                </button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr className="border-b-2 border-zinc-300 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800">
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+                        Ledger
+                      </th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+                        Type
+                      </th>
+                      <th className="px-4 py-3 text-right text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+                        DR
+                      </th>
+                      <th className="px-4 py-3 text-right text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+                        CR
+                      </th>
+                      <th className="px-4 py-3 text-center text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+                        Action
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {editItems.map((item, index) => (
+                      <tr
+                        key={index}
+                        className="border-b border-zinc-200 dark:border-zinc-700"
+                      >
+                        <td className="px-4 py-3">
+                          <SearchableSelect
+                            options={ledgers.map((ledger) => ({
+                              value: ledger.id,
+                              label: ledger.name,
+                              searchText: ledger.name,
+                            }))}
+                            value={item.ledger_id || 0}
+                            onChange={(value) =>
+                              handleUpdateEditItem(
+                                index,
+                                "ledger_id",
+                                typeof value === "number" ? value : parseInt(value as string)
+                              )
+                            }
+                            placeholder="Select ledger"
+                            searchPlaceholder="Type to search ledgers..."
+                            required
+                            className="w-full min-w-[200px] relative"
+                            allowClear
+                            onCreateNew={handleCreateNewLedger}
+                            createNewLabel={(searchTerm) => `Create "${searchTerm}" ledger`}
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          <select
+                            value={item.entry_type}
+                            onChange={(e) =>
+                              handleUpdateEditItem(
+                                index,
+                                "entry_type",
+                                e.target.value as "DEBIT" | "CREDIT"
+                              )
+                            }
+                            required
+                            className="w-full min-w-[120px] rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+                          >
+                            <option value="DEBIT">DR</option>
+                            <option value="CREDIT">CR</option>
+                          </select>
+                        </td>
+                        <td className="px-4 py-3">
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={item.entry_type === "DEBIT" ? (typeof item.amount === "string" ? item.amount : item.amount.toString()) : ""}
+                            onChange={(e) =>
+                              handleUpdateEditItem(index, "amount", e.target.value)
+                            }
+                            disabled={item.entry_type === "CREDIT"}
+                            placeholder="0.00"
+                            className={`w-full min-w-[120px] rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 ${
+                              item.entry_type === "CREDIT"
+                                ? "cursor-not-allowed bg-zinc-100 opacity-50 dark:bg-zinc-900"
+                                : "bg-white"
+                            }`}
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={item.entry_type === "CREDIT" ? (typeof item.amount === "string" ? item.amount : item.amount.toString()) : ""}
+                            onChange={(e) =>
+                              handleUpdateEditItem(index, "amount", e.target.value)
+                            }
+                            disabled={item.entry_type === "DEBIT"}
+                            placeholder="0.00"
+                            className={`w-full min-w-[120px] rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 ${
+                              item.entry_type === "DEBIT"
+                                ? "cursor-not-allowed bg-zinc-100 opacity-50 dark:bg-zinc-900"
+                                : "bg-white"
+                            }`}
+                          />
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          {editItems.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveEditItem(index)}
+                              className="rounded p-1.5 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                              title="Remove row"
+                            >
+                              <svg
+                                className="h-5 w-5"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M6 18L18 6M6 6l12 12"
+                                />
+                              </svg>
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 border-zinc-300 bg-zinc-50 font-semibold dark:border-zinc-700 dark:bg-zinc-800">
+                      <td colSpan={2} className="px-4 py-3 text-right text-zinc-700 dark:text-zinc-300">
+                        Totals:
+                      </td>
+                      <td className="px-4 py-3 text-right text-green-600 dark:text-green-400">
+                        KSh {editTotalDebits.toLocaleString("en-US", {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                          useGrouping: true,
+                        })}
+                      </td>
+                      <td className="px-4 py-3 text-right text-red-600 dark:text-red-400">
+                        KSh {editTotalCredits.toLocaleString("en-US", {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                          useGrouping: true,
+                        })}
+                      </td>
+                      <td className="px-4 py-3"></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+
+            {/* Balance Summary */}
+            <div className="rounded-lg border-2 border-zinc-300 bg-zinc-50 p-4 dark:border-zinc-700 dark:bg-zinc-800/50">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                  Balance Status:
+                </span>
+                <span
+                  className={`text-sm font-semibold ${
+                    editIsBalanced
+                      ? "text-green-600 dark:text-green-400"
+                      : "text-red-600 dark:text-red-400"
+                  }`}
+                >
+                  {editIsBalanced
+                    ? "✓ Balanced"
+                    : `Out of Balance: KSh ${Math.abs(editBalanceDifference).toFixed(2)}`}
+                </span>
+              </div>
+              {!editIsBalanced && (
+                <p className="mt-2 text-xs text-zinc-600 dark:text-zinc-400">
+                  {editBalanceDifference > 0
+                    ? "Credits need to be increased or debits decreased"
+                    : "Debits need to be increased or credits decreased"}
+                </p>
+              )}
             </div>
 
             {editError && (
@@ -1590,6 +1935,7 @@ export default function ReportsPage() {
                 onClick={() => {
                   setEditingTransactionId(null);
                   setEditFormData(null);
+                  setEditItems([]);
                   setEditError(null);
                 }}
                 className="rounded-lg border border-zinc-300 px-6 py-2 font-medium text-zinc-700 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
@@ -1598,7 +1944,7 @@ export default function ReportsPage() {
               </button>
               <button
                 type="submit"
-                disabled={updateTransactionMutation.isPending}
+                disabled={updateTransactionMutation.isPending || !editIsBalanced}
                 className="rounded-lg bg-blue-600 px-6 py-2 font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
               >
                 {updateTransactionMutation.isPending ? "Updating..." : "Update Transaction"}
@@ -1610,6 +1956,221 @@ export default function ReportsPage() {
             <p className="text-zinc-600 dark:text-zinc-400">Loading transaction...</p>
           </div>
         )}
+      </Dialog>
+
+      {/* Create Ledger Dialog */}
+      <Dialog
+        isOpen={showCreateLedgerDialog}
+        onClose={() => {
+          setShowCreateLedgerDialog(false);
+          setEditError(null);
+          setPendingLedgerName("");
+        }}
+        title="Create Ledger"
+        size="lg"
+      >
+        <form onSubmit={handleCreateLedger} className="space-y-4">
+          <div>
+            <label className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              Ledger Name *
+            </label>
+            <input
+              type="text"
+              value={ledgerFormData.name}
+              onChange={(e) =>
+                setLedgerFormData({ ...ledgerFormData, name: e.target.value })
+              }
+              required
+              className="w-full rounded-lg border border-zinc-300 bg-white px-4 py-2 text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+              placeholder="e.g., Office Supplies, Travel Expenses"
+            />
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              Ledger Group *
+            </label>
+            <SearchableSelect
+              options={groups.map((group) => ({
+                value: group.id,
+                label: group.name,
+                searchText: group.parent_ledger_group
+                  ? `${group.name} ${group.parent_ledger_group.name}`
+                  : group.name,
+              }))}
+              value={ledgerFormData.ledger_group_id || 0}
+              onChange={(value) =>
+                setLedgerFormData({
+                  ...ledgerFormData,
+                  ledger_group_id:
+                    typeof value === "number" ? value : parseInt(value as string),
+                })
+              }
+              placeholder="Select a ledger group"
+              searchPlaceholder="Type to search ledger groups..."
+              required
+              className="w-full"
+              onCreateNew={(searchTerm) => {
+                setPendingLedgerGroupName(searchTerm);
+                setCreatingLedgerGroupFromForm(true);
+                setLedgerGroupFormData({
+                  name: searchTerm,
+                  parent_ledger_group_id: 0,
+                  category: "other",
+                });
+                setShowLedgerGroupForm(true);
+              }}
+              createNewLabel={(searchTerm) => `Create "${searchTerm}" ledger group`}
+            />
+          </div>
+
+          {editError && (
+            <div className="rounded-lg bg-red-50 p-4 text-sm text-red-800 dark:bg-red-900/20 dark:text-red-200">
+              {editError}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-4">
+            <button
+              type="button"
+              onClick={() => {
+                setShowCreateLedgerDialog(false);
+                setEditError(null);
+                setPendingLedgerName("");
+              }}
+              className="rounded-lg border border-zinc-300 px-6 py-2 font-medium text-zinc-700 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={createLedgerMutation.isPending}
+              className="rounded-lg bg-blue-600 px-6 py-2 font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
+            >
+              {createLedgerMutation.isPending ? "Creating..." : "Create Ledger"}
+            </button>
+          </div>
+        </form>
+      </Dialog>
+
+      {/* Create Ledger Group Dialog */}
+      <Dialog
+        isOpen={showLedgerGroupForm}
+        onClose={() => {
+          setShowLedgerGroupForm(false);
+          setLedgerGroupFormData({
+            name: "",
+            parent_ledger_group_id: 0,
+            category: "other",
+          });
+          setPendingLedgerGroupName("");
+          setCreatingLedgerGroupFromForm(false);
+        }}
+        title="Create Ledger Group"
+        size="lg"
+      >
+        <form onSubmit={handleLedgerGroupSubmit} className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <label className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Name *
+              </label>
+              <input
+                type="text"
+                value={ledgerGroupFormData.name}
+                onChange={(e) =>
+                  setLedgerGroupFormData({
+                    ...ledgerGroupFormData,
+                    name: e.target.value,
+                  })
+                }
+                required
+                className="w-full rounded-lg border border-zinc-300 bg-white px-4 py-2 text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+                placeholder="e.g., Bank Accounts, Cash Accounts"
+              />
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Parent Ledger Group *
+              </label>
+              <SearchableSelect
+                options={parentGroups.map((group) => ({
+                  value: group.id,
+                  label: group.name,
+                  searchText: group.name,
+                }))}
+                value={ledgerGroupFormData.parent_ledger_group_id || 0}
+                onChange={(value) =>
+                  setLedgerGroupFormData({
+                    ...ledgerGroupFormData,
+                    parent_ledger_group_id: typeof value === "number" ? value : parseInt(value as string),
+                  })
+                }
+                placeholder="Select a parent ledger group"
+                searchPlaceholder="Type to search parent groups..."
+                required
+                className="w-full"
+              />
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Category *
+              </label>
+              <select
+                value={ledgerGroupFormData.category}
+                onChange={(e) =>
+                  setLedgerGroupFormData({
+                    ...ledgerGroupFormData,
+                    category: e.target.value as LedgerGroupCreate["category"],
+                  })
+                }
+                required
+                className="w-full rounded-lg border border-zinc-300 bg-white px-4 py-2 text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+              >
+                <option value="incomes">Incomes</option>
+                <option value="expenses">Expenses</option>
+                <option value="bank_accounts">Bank Accounts</option>
+                <option value="cash_accounts">Cash Accounts</option>
+                <option value="bank_charges">Bank Charges</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+          </div>
+
+          {editError && (
+            <div className="rounded-lg bg-red-50 p-4 text-sm text-red-800 dark:bg-red-900/20 dark:text-red-200">
+              {editError}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-4">
+            <button
+              type="button"
+              onClick={() => {
+                setShowLedgerGroupForm(false);
+                setLedgerGroupFormData({
+                  name: "",
+                  parent_ledger_group_id: 0,
+                  category: "other",
+                });
+                setPendingLedgerGroupName("");
+                setCreatingLedgerGroupFromForm(false);
+              }}
+              className="rounded-lg border border-zinc-300 px-6 py-2 font-medium text-zinc-700 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={createLedgerGroupMutation.isPending}
+              className="rounded-lg bg-blue-600 px-6 py-2 font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
+            >
+              {createLedgerGroupMutation.isPending ? "Creating..." : "Create Ledger Group"}
+            </button>
+          </div>
+        </form>
       </Dialog>
 
       {/* Delete Confirmation Dialog */}

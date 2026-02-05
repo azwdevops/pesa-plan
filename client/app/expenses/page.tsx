@@ -48,10 +48,16 @@ export default function ExpensesPage() {
   const [customStartDate, setCustomStartDate] = useState<Date | null>(null);
   const [customEndDate, setCustomEndDate] = useState<Date | null>(null);
 
-  // Filter ledgers: expense ledgers, asset ledgers (for paying account), and charge ledgers
-  const expenseGroups = groups.filter(
-    (group) => group.category === "expenses"
+  // Filter ledgers: expense ledgers (under Expenditure parent group), asset ledgers (for paying account), and charge ledgers
+  const expenditureParentGroup = parentGroups.find(
+    (parent) => parent.name.toLowerCase() === "expenditure"
   );
+
+  const expenseGroups = expenditureParentGroup
+    ? groups.filter(
+        (group) => group.parent_ledger_group_id === expenditureParentGroup.id
+      )
+    : groups.filter((group) => group.category === "expenses");
   const assetGroups = groups.filter(
     (group) =>
       group.category === "bank_accounts" ||

@@ -48,25 +48,33 @@ export default function CurrentAssetsPage() {
     (group) => group.parent_ledger_group_id === currentAssetsParent?.id
   );
 
-  // Filter ledgers: asset ledgers (for paying account)
+  // Filter ledgers: asset ledgers (for paying account), charge ledgers (for transaction charges)
   const assetGroups = groups.filter(
     (group) =>
       group.category === "bank_accounts" ||
       group.category === "cash_accounts"
   );
+  const chargeGroups = groups.filter(
+    (group) => group.category === "bank_charges"
+  );
 
   const assetLedgers = ledgers.filter((ledger) =>
     assetGroups.some((group) => group.id === ledger.ledger_group_id)
+  );
+  const chargeLedgers = ledgers.filter((ledger) =>
+    chargeGroups.some((group) => group.id === ledger.ledger_group_id)
   );
 
   const [showRecordAssetDialog, setShowRecordAssetDialog] = useState(false);
   const [showCreateAssetAccountDialog, setShowCreateAssetAccountDialog] = useState(false);
   const [showCreatePayingAccountDialog, setShowCreatePayingAccountDialog] = useState(false);
+  const [showCreateChargeLedgerDialog, setShowCreateChargeLedgerDialog] = useState(false);
   const [showLedgerGroupForm, setShowLedgerGroupForm] = useState(false);
   const [pendingAssetAccountName, setPendingAssetAccountName] = useState("");
   const [pendingPayingAccountName, setPendingPayingAccountName] = useState("");
+  const [pendingChargeLedgerName, setPendingChargeLedgerName] = useState("");
   const [pendingLedgerGroupName, setPendingLedgerGroupName] = useState("");
-  const [creatingLedgerGroupFromForm, setCreatingLedgerGroupFromForm] = useState<"asset" | "paying" | null>(null);
+  const [creatingLedgerGroupFromForm, setCreatingLedgerGroupFromForm] = useState<"asset" | "paying" | "charge" | null>(null);
   const [ledgerGroupFormData, setLedgerGroupFormData] = useState<LedgerGroupCreate>({
     name: "",
     parent_ledger_group_id: 0,
@@ -76,6 +84,8 @@ export default function CurrentAssetsPage() {
     transaction_date: new Date(),
     asset_account_id: 0,
     paying_account_id: 0,
+    charge_ledger_id: 0,
+    charge_amount: "",
     amount: "",
     reference: "",
   });
@@ -87,6 +97,11 @@ export default function CurrentAssetsPage() {
   const [payingAccountFormData, setPayingAccountFormData] = useState<LedgerCreate>({
     name: "",
     ledger_group_id: assetGroups[0]?.id || 0,
+    spending_type_id: null,
+  });
+  const [chargeLedgerFormData, setChargeLedgerFormData] = useState<LedgerCreate>({
+    name: "",
+    ledger_group_id: chargeGroups[0]?.id || 0,
     spending_type_id: null,
   });
   const [error, setError] = useState<string | null>(null);
@@ -137,28 +152,55 @@ export default function CurrentAssetsPage() {
     }
 
     const amount = parseFloat(formData.amount);
+    const chargeAmount = formData.charge_ledger_id && formData.charge_amount
+      ? parseFloat(formData.charge_amount)
+      : 0;
     const transactionDate = formatDateForAPI(formData.transaction_date);
+
+    // Validate charge amount if charge ledger is selected
+    if (formData.charge_ledger_id && (!formData.charge_amount || chargeAmount <= 0)) {
+      setError("Please enter a valid charge amount");
+      return;
+    }
 
     // Build transaction items for asset purchase:
     // Debit: Asset account (increases asset)
-    // Credit: Paying account (decreases asset - cash/bank)
-    const items = [
+    // Debit: Charge ledger (if selected, increases charge expense)
+    // Credit: Paying account (decreases asset - cash/bank, total of asset + charge)
+    const items: Array<{
+      ledger_id: number;
+      entry_type: "DEBIT" | "CREDIT";
+      amount: number;
+    }> = [
       {
         ledger_id: formData.asset_account_id,
-        entry_type: "DEBIT" as const,
-        amount: amount,
-      },
-      {
-        ledger_id: formData.paying_account_id,
-        entry_type: "CREDIT" as const,
+        entry_type: "DEBIT",
         amount: amount,
       },
     ];
 
+    // If charge ledger is selected and charge amount is provided, add it as a debit
+    if (formData.charge_ledger_id && chargeAmount > 0) {
+      items.push({
+        ledger_id: formData.charge_ledger_id,
+        entry_type: "DEBIT",
+        amount: chargeAmount,
+      });
+    }
+
+    // Credit: Paying account (total of asset + charge)
+    const totalCreditAmount = amount + chargeAmount;
+    items.push({
+      ledger_id: formData.paying_account_id,
+      entry_type: "CREDIT",
+      amount: totalCreditAmount,
+    });
+
     try {
       // Create transaction with double-entry accounting for asset purchase:
       // Debit: Asset account (increases asset)
-      // Credit: Paying account (decreases asset - cash/bank)
+      // Debit: Charge ledger (if selected, increases charge expense)
+      // Credit: Paying account (decreases asset - cash/bank, total of asset + charge)
       await createTransactionMutation.mutateAsync({
         transaction_date: transactionDate,
         reference:
@@ -166,7 +208,7 @@ export default function CurrentAssetsPage() {
             ? formData.reference.trim()
             : null,
         transaction_type: "JOURNAL",
-        total_amount: amount,
+        total_amount: totalCreditAmount,
         items: items,
       });
 
@@ -175,6 +217,8 @@ export default function CurrentAssetsPage() {
         transaction_date: new Date(),
         asset_account_id: 0,
         paying_account_id: 0,
+        charge_ledger_id: 0,
+        charge_amount: "",
         amount: "",
         reference: "",
       });
@@ -277,6 +321,52 @@ export default function CurrentAssetsPage() {
     setShowCreatePayingAccountDialog(true);
   };
 
+  const handleCreateChargeLedger = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+
+    if (!chargeLedgerFormData.name.trim()) {
+      setError("Ledger name is required");
+      return;
+    }
+
+    if (!chargeLedgerFormData.ledger_group_id) {
+      setError("Please select a ledger group");
+      return;
+    }
+
+    try {
+      const newLedger = await createLedgerMutation.mutateAsync(chargeLedgerFormData);
+      
+      // Set the newly created ledger as the selected transaction charges ledger
+      setFormData({
+        ...formData,
+        charge_ledger_id: newLedger.id,
+      });
+
+      // Reset ledger form and close dialog
+      setChargeLedgerFormData({
+        name: "",
+        ledger_group_id: chargeGroups[0]?.id || 0,
+        spending_type_id: null,
+      });
+      setShowCreateChargeLedgerDialog(false);
+      setPendingChargeLedgerName("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create transaction charges ledger");
+    }
+  };
+
+  const handleCreateNewChargeLedger = (searchTerm: string) => {
+    setPendingChargeLedgerName(searchTerm);
+    setChargeLedgerFormData({
+      name: searchTerm,
+      ledger_group_id: chargeGroups[0]?.id || 0,
+      spending_type_id: null,
+    });
+    setShowCreateChargeLedgerDialog(true);
+  };
+
   const handleLedgerGroupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -303,6 +393,11 @@ export default function CurrentAssetsPage() {
       } else if (creatingLedgerGroupFromForm === "paying") {
         setPayingAccountFormData({
           ...payingAccountFormData,
+          ledger_group_id: newLedgerGroup.id,
+        });
+      } else if (creatingLedgerGroupFromForm === "charge") {
+        setChargeLedgerFormData({
+          ...chargeLedgerFormData,
           ledger_group_id: newLedgerGroup.id,
         });
       }
@@ -715,6 +810,54 @@ export default function CurrentAssetsPage() {
                 className="w-full rounded-lg border border-zinc-300 bg-white px-4 py-2 text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
               />
             </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Transaction Charges Ledger (Optional)
+              </label>
+              <SearchableSelect
+                options={chargeLedgers.map((ledger) => ({
+                  value: ledger.id,
+                  label: ledger.name,
+                  searchText: ledger.name,
+                }))}
+                value={formData.charge_ledger_id || 0}
+                onChange={(value) =>
+                  setFormData({
+                    ...formData,
+                    charge_ledger_id:
+                      typeof value === "number" ? value : parseInt(value as string),
+                    charge_amount: typeof value === "number" && value === 0 ? "" : formData.charge_amount,
+                  })
+                }
+                placeholder="Select transaction charges ledger (optional)"
+                searchPlaceholder="Type to search transaction charges ledgers..."
+                className="w-full"
+                allowClear
+                onCreateNew={handleCreateNewChargeLedger}
+                createNewLabel={(searchTerm) => `Create "${searchTerm}" transaction charges ledger`}
+              />
+            </div>
+
+            {formData.charge_ledger_id > 0 && (
+              <div>
+                <label className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                  Transaction Charges Amount *
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  value={formData.charge_amount}
+                  onChange={(e) =>
+                    setFormData({ ...formData, charge_amount: e.target.value })
+                  }
+                  required
+                  placeholder="0.00"
+                  className="w-full rounded-lg border border-zinc-300 bg-white px-4 py-2 text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+                />
+              </div>
+            )}
           </div>
 
           {error && (
@@ -930,6 +1073,101 @@ export default function CurrentAssetsPage() {
               className="rounded-lg bg-blue-600 px-6 py-2 font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
             >
               {createLedgerMutation.isPending ? "Creating..." : "Create Account"}
+            </button>
+          </div>
+        </form>
+      </Dialog>
+
+      {/* Create Charge Ledger Dialog */}
+      <Dialog
+        isOpen={showCreateChargeLedgerDialog}
+        onClose={() => {
+          setShowCreateChargeLedgerDialog(false);
+          setError(null);
+          setPendingChargeLedgerName("");
+        }}
+        title="Create Transaction Charges Ledger"
+        size="lg"
+      >
+        <form onSubmit={handleCreateChargeLedger} className="space-y-4">
+          <div>
+            <label className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              Ledger Name *
+            </label>
+            <input
+              type="text"
+              value={chargeLedgerFormData.name}
+              onChange={(e) =>
+                setChargeLedgerFormData({ ...chargeLedgerFormData, name: e.target.value })
+              }
+              required
+              className="w-full rounded-lg border border-zinc-300 bg-white px-4 py-2 text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+              placeholder="e.g., Bank Charges, Transaction Fees"
+            />
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              Ledger Group *
+            </label>
+            <SearchableSelect
+              options={chargeGroups.map((group) => ({
+                value: group.id,
+                label: group.name,
+                searchText: group.parent_ledger_group
+                  ? `${group.name} ${group.parent_ledger_group.name}`
+                  : group.name,
+              }))}
+              value={chargeLedgerFormData.ledger_group_id || 0}
+              onChange={(value) =>
+                setChargeLedgerFormData({
+                  ...chargeLedgerFormData,
+                  ledger_group_id:
+                    typeof value === "number" ? value : parseInt(value as string),
+                })
+              }
+              placeholder="Select a ledger group"
+              searchPlaceholder="Type to search ledger groups..."
+              required
+              className="w-full"
+              onCreateNew={(searchTerm) => {
+                setPendingLedgerGroupName(searchTerm);
+                setCreatingLedgerGroupFromForm("charge");
+                setLedgerGroupFormData({
+                  name: searchTerm,
+                  parent_ledger_group_id: 0,
+                  category: "bank_charges",
+                });
+                setShowLedgerGroupForm(true);
+              }}
+              createNewLabel={(searchTerm) => `Create "${searchTerm}" ledger group`}
+            />
+          </div>
+
+          {error && (
+            <div className="rounded-lg bg-red-50 p-4 text-sm text-red-800 dark:bg-red-900/20 dark:text-red-200">
+              {error}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-4">
+            <button
+              type="button"
+              onClick={() => {
+                setShowCreateChargeLedgerDialog(false);
+                setError(null);
+                setPendingChargeLedgerName("");
+              }}
+              className="rounded-lg border border-zinc-300 px-6 py-2 font-medium text-zinc-700 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={createLedgerMutation.isPending}
+              className="rounded-lg bg-blue-600 px-6 py-2 font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
+            >
+              {createLedgerMutation.isPending ? "Creating..." : "Create Ledger"}
             </button>
           </div>
         </form>

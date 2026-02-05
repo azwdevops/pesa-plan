@@ -2,29 +2,40 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { Header } from "@/components/Header";
 import { Sidebar } from "@/components/Sidebar";
+import { Dialog } from "@/components/Dialog";
+import { SearchableSelect } from "@/components/SearchableSelect";
 import { useAuth } from "@/lib/hooks/use-auth";
 import { useSidebar } from "@/contexts/SidebarContext";
 import {
   useLedgers,
   useLedgerGroups,
+  useCreateLedger,
   useParentLedgerGroups,
+  useCreateLedgerGroup,
 } from "@/lib/hooks/use-accounts";
-import { useTransactions } from "@/lib/hooks/use-transactions";
+import { useCreateTransaction, useTransactions } from "@/lib/hooks/use-transactions";
 import { useQuery } from "@tanstack/react-query";
 import { getTransaction } from "@/lib/api/transactions";
+import type { LedgerCreate, LedgerGroupCreate } from "@/lib/api/accounts";
 
 export default function FixedAssetsPage() {
   const router = useRouter();
   const { isAuthenticated, isLoading } = useAuth();
   const { isSidebarOpen, setIsSidebarOpen, toggleSidebar } = useSidebar();
-  const { data: ledgers = [], refetch: refetchLedgers } = useLedgers();
+  const { data: ledgers = [], isLoading: ledgersLoading, refetch: refetchLedgers } = useLedgers();
   const { data: groups = [], refetch: refetchGroups } = useLedgerGroups();
   const { data: parentGroups = [], refetch: refetchParentGroups } = useParentLedgerGroups();
   const { token } = useAuth();
   const { data: allTransactions = [], refetch: refetchTransactions } = useTransactions();
+  const createTransactionMutation = useCreateTransaction();
+  const createLedgerMutation = useCreateLedger();
+  const createLedgerGroupMutation = useCreateLedgerGroup();
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Find "Fixed Assets" parent group
@@ -36,6 +47,49 @@ export default function FixedAssetsPage() {
   const fixedAssetGroups = groups.filter(
     (group) => group.parent_ledger_group_id === fixedAssetsParent?.id
   );
+
+  // Filter ledgers: asset ledgers (for paying account)
+  const assetGroups = groups.filter(
+    (group) =>
+      group.category === "bank_accounts" ||
+      group.category === "cash_accounts"
+  );
+
+  const assetLedgers = ledgers.filter((ledger) =>
+    assetGroups.some((group) => group.id === ledger.ledger_group_id)
+  );
+
+  const [showRecordAssetDialog, setShowRecordAssetDialog] = useState(false);
+  const [showCreateAssetAccountDialog, setShowCreateAssetAccountDialog] = useState(false);
+  const [showCreatePayingAccountDialog, setShowCreatePayingAccountDialog] = useState(false);
+  const [showLedgerGroupForm, setShowLedgerGroupForm] = useState(false);
+  const [pendingAssetAccountName, setPendingAssetAccountName] = useState("");
+  const [pendingPayingAccountName, setPendingPayingAccountName] = useState("");
+  const [pendingLedgerGroupName, setPendingLedgerGroupName] = useState("");
+  const [creatingLedgerGroupFromForm, setCreatingLedgerGroupFromForm] = useState<"asset" | "paying" | null>(null);
+  const [ledgerGroupFormData, setLedgerGroupFormData] = useState<LedgerGroupCreate>({
+    name: "",
+    parent_ledger_group_id: 0,
+    category: "other",
+  });
+  const [formData, setFormData] = useState({
+    transaction_date: new Date(),
+    asset_account_id: 0,
+    paying_account_id: 0,
+    amount: "",
+    reference: "",
+  });
+  const [assetAccountFormData, setAssetAccountFormData] = useState<LedgerCreate>({
+    name: "",
+    ledger_group_id: fixedAssetGroups[0]?.id || 0,
+    spending_type_id: null,
+  });
+  const [payingAccountFormData, setPayingAccountFormData] = useState<LedgerCreate>({
+    name: "",
+    ledger_group_id: assetGroups[0]?.id || 0,
+    spending_type_id: null,
+  });
+  const [error, setError] = useState<string | null>(null);
 
   // Filter to only fixed asset ledgers
   const fixedAssetLedgers = ledgers.filter((ledger) =>
@@ -52,6 +106,219 @@ export default function FixedAssetsPage() {
   if (!isAuthenticated && !isLoading) {
     return null; // Will redirect, don't render anything
   }
+
+  // Format date to YYYY-MM-DD without timezone issues
+  const formatDateForAPI = (date: Date | null): string => {
+    if (!date) return "";
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  const handleRecordAsset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+
+    // Validation
+    if (!formData.asset_account_id) {
+      setError("Please select an asset account");
+      return;
+    }
+
+    if (!formData.paying_account_id) {
+      setError("Please select a paying account");
+      return;
+    }
+
+    if (!formData.amount || parseFloat(formData.amount) <= 0) {
+      setError("Please enter a valid amount");
+      return;
+    }
+
+    const amount = parseFloat(formData.amount);
+    const transactionDate = formatDateForAPI(formData.transaction_date);
+
+    // Build transaction items for asset purchase:
+    // Debit: Asset account (increases asset)
+    // Credit: Paying account (decreases asset - cash/bank)
+    const items = [
+      {
+        ledger_id: formData.asset_account_id,
+        entry_type: "DEBIT" as const,
+        amount: amount,
+      },
+      {
+        ledger_id: formData.paying_account_id,
+        entry_type: "CREDIT" as const,
+        amount: amount,
+      },
+    ];
+
+    try {
+      // Create transaction with double-entry accounting for asset purchase:
+      // Debit: Asset account (increases asset)
+      // Credit: Paying account (decreases asset - cash/bank)
+      await createTransactionMutation.mutateAsync({
+        transaction_date: transactionDate,
+        reference:
+          formData.reference && formData.reference.trim() !== ""
+            ? formData.reference.trim()
+            : null,
+        transaction_type: "JOURNAL",
+        total_amount: amount,
+        items: items,
+      });
+
+      // Reset form and close dialog
+      setFormData({
+        transaction_date: new Date(),
+        asset_account_id: 0,
+        paying_account_id: 0,
+        amount: "",
+        reference: "",
+      });
+      setShowRecordAssetDialog(false);
+      alert("Asset purchase recorded successfully!");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to record asset purchase");
+    }
+  };
+
+  const handleCreateAssetAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+
+    if (!assetAccountFormData.name.trim()) {
+      setError("Asset account name is required");
+      return;
+    }
+
+    if (!assetAccountFormData.ledger_group_id) {
+      setError("Please select a ledger group");
+      return;
+    }
+
+    try {
+      const newLedger = await createLedgerMutation.mutateAsync(assetAccountFormData);
+      
+      // Set the newly created ledger as the selected asset account
+      setFormData({
+        ...formData,
+        asset_account_id: newLedger.id,
+      });
+
+      // Reset ledger form and close dialog
+      setAssetAccountFormData({
+        name: "",
+        ledger_group_id: fixedAssetGroups[0]?.id || 0,
+        spending_type_id: null,
+      });
+      setShowCreateAssetAccountDialog(false);
+      setPendingAssetAccountName("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create asset account");
+    }
+  };
+
+  const handleCreatePayingAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+
+    if (!payingAccountFormData.name.trim()) {
+      setError("Account name is required");
+      return;
+    }
+
+    if (!payingAccountFormData.ledger_group_id) {
+      setError("Please select an account group");
+      return;
+    }
+
+    try {
+      const newLedger = await createLedgerMutation.mutateAsync(payingAccountFormData);
+      
+      // Set the newly created ledger as the selected paying account
+      setFormData({
+        ...formData,
+        paying_account_id: newLedger.id,
+      });
+
+      // Reset ledger form and close dialog
+      setPayingAccountFormData({
+        name: "",
+        ledger_group_id: assetGroups[0]?.id || 0,
+        spending_type_id: null,
+      });
+      setShowCreatePayingAccountDialog(false);
+      setPendingPayingAccountName("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create account");
+    }
+  };
+
+  const handleCreateNewAssetAccount = (searchTerm: string) => {
+    setPendingAssetAccountName(searchTerm);
+    setAssetAccountFormData({
+      name: searchTerm,
+      ledger_group_id: fixedAssetGroups[0]?.id || 0,
+      spending_type_id: null,
+    });
+    setShowCreateAssetAccountDialog(true);
+  };
+
+  const handleCreateNewPayingAccount = (searchTerm: string) => {
+    setPendingPayingAccountName(searchTerm);
+    setPayingAccountFormData({
+      name: searchTerm,
+      ledger_group_id: assetGroups[0]?.id || 0,
+      spending_type_id: null,
+    });
+    setShowCreatePayingAccountDialog(true);
+  };
+
+  const handleLedgerGroupSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+
+    if (!ledgerGroupFormData.name.trim()) {
+      setError("Ledger group name is required");
+      return;
+    }
+
+    if (!ledgerGroupFormData.parent_ledger_group_id) {
+      setError("Please select a parent ledger group");
+      return;
+    }
+
+    try {
+      const newLedgerGroup = await createLedgerGroupMutation.mutateAsync(ledgerGroupFormData);
+      
+      // Auto-select the newly created ledger group in the appropriate form
+      if (creatingLedgerGroupFromForm === "asset") {
+        setAssetAccountFormData({
+          ...assetAccountFormData,
+          ledger_group_id: newLedgerGroup.id,
+        });
+      } else if (creatingLedgerGroupFromForm === "paying") {
+        setPayingAccountFormData({
+          ...payingAccountFormData,
+          ledger_group_id: newLedgerGroup.id,
+        });
+      }
+      
+      setShowLedgerGroupForm(false);
+      setLedgerGroupFormData({
+        name: "",
+        parent_ledger_group_id: 0,
+        category: "other",
+      });
+      setPendingLedgerGroupName("");
+      setCreatingLedgerGroupFromForm(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create ledger group");
+    }
+  };
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -196,6 +463,12 @@ export default function FixedAssetsPage() {
                 </svg>
                 <span>{isRefreshing ? "Refreshing..." : "Refresh"}</span>
               </button>
+              <button
+                onClick={() => setShowRecordAssetDialog(true)}
+                className="rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white transition-colors hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+              >
+                + Record Asset Purchase
+              </button>
             </div>
           </div>
 
@@ -294,6 +567,493 @@ export default function FixedAssetsPage() {
           )}
         </div>
       </main>
+
+      {/* Record Asset Purchase Dialog */}
+      <Dialog
+        isOpen={showRecordAssetDialog}
+        onClose={() => {
+          setShowRecordAssetDialog(false);
+          setError(null);
+        }}
+        title="Record Asset Purchase"
+        size="lg"
+      >
+        <form onSubmit={handleRecordAsset} className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <label className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Transaction Date *
+              </label>
+              <DatePicker
+                selected={formData.transaction_date instanceof Date ? formData.transaction_date : new Date(formData.transaction_date)}
+                onChange={(date: Date | null) => {
+                  if (date) {
+                    setFormData({
+                      ...formData,
+                      transaction_date: date,
+                    });
+                  }
+                }}
+                dateFormat="dd/MM/yyyy"
+                className="w-full rounded-lg border border-zinc-300 bg-white px-4 py-2 text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+                required
+                popperPlacement="bottom-start"
+                popperClassName="react-datepicker-popper-no-backdrop"
+              />
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Narration (optional)
+              </label>
+              <input
+                type="text"
+                value={formData.reference}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    reference: e.target.value,
+                  })
+                }
+                placeholder="What is this asset purchase about?"
+                className="w-full rounded-lg border border-zinc-300 bg-white px-4 py-2 text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+              />
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Asset Account *
+              </label>
+              <SearchableSelect
+                options={fixedAssetLedgers.map((ledger) => ({
+                  value: ledger.id,
+                  label: ledger.name,
+                  searchText: ledger.name,
+                }))}
+                value={formData.asset_account_id || 0}
+                onChange={(value) =>
+                  setFormData({
+                    ...formData,
+                    asset_account_id:
+                      typeof value === "number" ? value : parseInt(value as string),
+                  })
+                }
+                placeholder="Select asset account"
+                searchPlaceholder="Type to search asset accounts..."
+                required
+                className="w-full"
+                allowClear
+                onCreateNew={handleCreateNewAssetAccount}
+                createNewLabel={(searchTerm) => `Create "${searchTerm}" asset account`}
+              />
+              {fixedAssetLedgers.length === 0 && !ledgersLoading && (
+                <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                  No fixed asset accounts found. Create one in{" "}
+                  <Link
+                    href="/accounts"
+                    className="text-blue-600 hover:underline dark:text-blue-400"
+                  >
+                    Accounts
+                  </Link>
+                </p>
+              )}
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Paying Account *
+              </label>
+              <SearchableSelect
+                options={assetLedgers.map((ledger) => ({
+                  value: ledger.id,
+                  label: ledger.name,
+                  searchText: ledger.name,
+                }))}
+                value={formData.paying_account_id || 0}
+                onChange={(value) =>
+                  setFormData({
+                    ...formData,
+                    paying_account_id:
+                      typeof value === "number" ? value : parseInt(value as string),
+                  })
+                }
+                placeholder="Select paying account"
+                searchPlaceholder="Type to search accounts..."
+                required
+                className="w-full"
+                allowClear
+                onCreateNew={handleCreateNewPayingAccount}
+                createNewLabel={(searchTerm) => `Create "${searchTerm}" account`}
+              />
+              {assetLedgers.length === 0 && !ledgersLoading && (
+                <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                  No asset accounts found. Create one in{" "}
+                  <Link
+                    href="/accounts"
+                    className="text-blue-600 hover:underline dark:text-blue-400"
+                  >
+                    Accounts
+                  </Link>
+                </p>
+              )}
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Amount *
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0.01"
+                value={formData.amount}
+                onChange={(e) =>
+                  setFormData({ ...formData, amount: e.target.value })
+                }
+                required
+                placeholder="0.00"
+                className="w-full rounded-lg border border-zinc-300 bg-white px-4 py-2 text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+              />
+            </div>
+          </div>
+
+          {error && (
+            <div className="rounded-lg bg-red-50 p-4 text-sm text-red-800 dark:bg-red-900/20 dark:text-red-200">
+              {error}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-4">
+            <button
+              type="button"
+              onClick={() => {
+                setShowRecordAssetDialog(false);
+                setError(null);
+              }}
+              className="rounded-lg border border-zinc-300 px-6 py-2 font-medium text-zinc-700 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={createTransactionMutation.isPending}
+              className="rounded-lg bg-blue-600 px-6 py-2 font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
+            >
+              {createTransactionMutation.isPending ? "Recording..." : "Record Purchase"}
+            </button>
+          </div>
+        </form>
+      </Dialog>
+
+      {/* Create Asset Account Dialog */}
+      <Dialog
+        isOpen={showCreateAssetAccountDialog}
+        onClose={() => {
+          setShowCreateAssetAccountDialog(false);
+          setError(null);
+          setPendingAssetAccountName("");
+        }}
+        title="Create Fixed Asset Account"
+        size="lg"
+      >
+        <form onSubmit={handleCreateAssetAccount} className="space-y-4">
+          <div>
+            <label className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              Account Name *
+            </label>
+            <input
+              type="text"
+              value={assetAccountFormData.name}
+              onChange={(e) =>
+                setAssetAccountFormData({ ...assetAccountFormData, name: e.target.value })
+              }
+              required
+              className="w-full rounded-lg border border-zinc-300 bg-white px-4 py-2 text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+              placeholder="e.g., Machinery, Vehicles, Buildings"
+            />
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              Ledger Group *
+            </label>
+            <SearchableSelect
+              options={fixedAssetGroups.map((group) => ({
+                value: group.id,
+                label: group.name,
+                searchText: group.parent_ledger_group
+                  ? `${group.name} ${group.parent_ledger_group.name}`
+                  : group.name,
+              }))}
+              value={assetAccountFormData.ledger_group_id || 0}
+              onChange={(value) =>
+                setAssetAccountFormData({
+                  ...assetAccountFormData,
+                  ledger_group_id:
+                    typeof value === "number" ? value : parseInt(value as string),
+                })
+              }
+              placeholder="Select a ledger group"
+              searchPlaceholder="Type to search ledger groups..."
+              required
+              className="w-full"
+              onCreateNew={(searchTerm) => {
+                setPendingLedgerGroupName(searchTerm);
+                setCreatingLedgerGroupFromForm("asset");
+                setLedgerGroupFormData({
+                  name: searchTerm,
+                  parent_ledger_group_id: fixedAssetsParent?.id || 0,
+                  category: "other",
+                });
+                setShowLedgerGroupForm(true);
+              }}
+              createNewLabel={(searchTerm) => `Create "${searchTerm}" ledger group`}
+            />
+          </div>
+
+          {error && (
+            <div className="rounded-lg bg-red-50 p-4 text-sm text-red-800 dark:bg-red-900/20 dark:text-red-200">
+              {error}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-4">
+            <button
+              type="button"
+              onClick={() => {
+                setShowCreateAssetAccountDialog(false);
+                setError(null);
+                setPendingAssetAccountName("");
+              }}
+              className="rounded-lg border border-zinc-300 px-6 py-2 font-medium text-zinc-700 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={createLedgerMutation.isPending}
+              className="rounded-lg bg-blue-600 px-6 py-2 font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
+            >
+              {createLedgerMutation.isPending ? "Creating..." : "Create Account"}
+            </button>
+          </div>
+        </form>
+      </Dialog>
+
+      {/* Create Paying Account Dialog */}
+      <Dialog
+        isOpen={showCreatePayingAccountDialog}
+        onClose={() => {
+          setShowCreatePayingAccountDialog(false);
+          setError(null);
+          setPendingPayingAccountName("");
+        }}
+        title="Create Paying Account"
+        size="lg"
+      >
+        <form onSubmit={handleCreatePayingAccount} className="space-y-4">
+          <div>
+            <label className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              Account Name *
+            </label>
+            <input
+              type="text"
+              value={payingAccountFormData.name}
+              onChange={(e) =>
+                setPayingAccountFormData({ ...payingAccountFormData, name: e.target.value })
+              }
+              required
+              className="w-full rounded-lg border border-zinc-300 bg-white px-4 py-2 text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+              placeholder="e.g., Equity Bank, M-Pesa, Cash"
+            />
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              Account Group *
+            </label>
+            <SearchableSelect
+              options={assetGroups.map((group) => ({
+                value: group.id,
+                label: group.name,
+                searchText: group.parent_ledger_group
+                  ? `${group.name} ${group.parent_ledger_group.name}`
+                  : group.name,
+              }))}
+              value={payingAccountFormData.ledger_group_id || 0}
+              onChange={(value) =>
+                setPayingAccountFormData({
+                  ...payingAccountFormData,
+                  ledger_group_id:
+                    typeof value === "number" ? value : parseInt(value as string),
+                })
+              }
+              placeholder="Select an account group"
+              searchPlaceholder="Type to search account groups..."
+              required
+              className="w-full"
+              onCreateNew={(searchTerm) => {
+                setPendingLedgerGroupName(searchTerm);
+                setCreatingLedgerGroupFromForm("paying");
+                setLedgerGroupFormData({
+                  name: searchTerm,
+                  parent_ledger_group_id: 0,
+                  category: "bank_accounts",
+                });
+                setShowLedgerGroupForm(true);
+              }}
+              createNewLabel={(searchTerm) => `Create "${searchTerm}" ledger group`}
+            />
+          </div>
+
+          {error && (
+            <div className="rounded-lg bg-red-50 p-4 text-sm text-red-800 dark:bg-red-900/20 dark:text-red-200">
+              {error}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-4">
+            <button
+              type="button"
+              onClick={() => {
+                setShowCreatePayingAccountDialog(false);
+                setError(null);
+                setPendingPayingAccountName("");
+              }}
+              className="rounded-lg border border-zinc-300 px-6 py-2 font-medium text-zinc-700 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={createLedgerMutation.isPending}
+              className="rounded-lg bg-blue-600 px-6 py-2 font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
+            >
+              {createLedgerMutation.isPending ? "Creating..." : "Create Account"}
+            </button>
+          </div>
+        </form>
+      </Dialog>
+
+      {/* Create Ledger Group Dialog */}
+      <Dialog
+        isOpen={showLedgerGroupForm}
+        onClose={() => {
+          setShowLedgerGroupForm(false);
+          setLedgerGroupFormData({
+            name: "",
+            parent_ledger_group_id: 0,
+            category: "other",
+          });
+          setPendingLedgerGroupName("");
+          setCreatingLedgerGroupFromForm(null);
+        }}
+        title="Create Ledger Group"
+        size="lg"
+      >
+        <form onSubmit={handleLedgerGroupSubmit} className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <label className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Name *
+              </label>
+              <input
+                type="text"
+                value={ledgerGroupFormData.name}
+                onChange={(e) =>
+                  setLedgerGroupFormData({
+                    ...ledgerGroupFormData,
+                    name: e.target.value,
+                  })
+                }
+                required
+                className="w-full rounded-lg border border-zinc-300 bg-white px-4 py-2 text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+                placeholder="e.g., Bank Accounts, Cash Accounts"
+              />
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Parent Ledger Group *
+              </label>
+              <SearchableSelect
+                options={parentGroups.map((group) => ({
+                  value: group.id,
+                  label: group.name,
+                  searchText: group.name,
+                }))}
+                value={ledgerGroupFormData.parent_ledger_group_id || 0}
+                onChange={(value) =>
+                  setLedgerGroupFormData({
+                    ...ledgerGroupFormData,
+                    parent_ledger_group_id: typeof value === "number" ? value : parseInt(value as string),
+                  })
+                }
+                placeholder="Select a parent ledger group"
+                searchPlaceholder="Type to search parent groups..."
+                required
+                className="w-full"
+              />
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Category *
+              </label>
+              <select
+                value={ledgerGroupFormData.category}
+                onChange={(e) =>
+                  setLedgerGroupFormData({
+                    ...ledgerGroupFormData,
+                    category: e.target.value as LedgerGroupCreate["category"],
+                  })
+                }
+                required
+                className="w-full rounded-lg border border-zinc-300 bg-white px-4 py-2 text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+              >
+                <option value="incomes">Incomes</option>
+                <option value="expenses">Expenses</option>
+                <option value="bank_accounts">Bank Accounts</option>
+                <option value="cash_accounts">Cash Accounts</option>
+                <option value="bank_charges">Bank Charges</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+          </div>
+
+          {error && (
+            <div className="rounded-lg bg-red-50 p-4 text-sm text-red-800 dark:bg-red-900/20 dark:text-red-200">
+              {error}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-4">
+            <button
+              type="button"
+              onClick={() => {
+                setShowLedgerGroupForm(false);
+                setLedgerGroupFormData({
+                  name: "",
+                  parent_ledger_group_id: 0,
+                  category: "other",
+                });
+                setPendingLedgerGroupName("");
+                setCreatingLedgerGroupFromForm(null);
+              }}
+              className="rounded-lg border border-zinc-300 px-6 py-2 font-medium text-zinc-700 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={createLedgerGroupMutation.isPending}
+              className="rounded-lg bg-blue-600 px-6 py-2 font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
+            >
+              {createLedgerGroupMutation.isPending ? "Creating..." : "Create Ledger Group"}
+            </button>
+          </div>
+        </form>
+      </Dialog>
     </div>
   );
 }

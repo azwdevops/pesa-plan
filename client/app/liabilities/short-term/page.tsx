@@ -236,8 +236,8 @@ export default function ShortTermLiabilitiesPage() {
                         ))}
                       </Pie>
                       <Tooltip
-                        formatter={(value: number) => [
-                          `KSh ${value.toLocaleString("en-US", {
+                        formatter={(value: number | undefined) => [
+                          `KSh ${(value || 0).toLocaleString("en-US", {
                             minimumFractionDigits: 2,
                             maximumFractionDigits: 2,
                             useGrouping: true,

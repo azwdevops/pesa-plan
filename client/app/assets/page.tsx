@@ -27,14 +27,15 @@ export default function AssetsPage() {
   const router = useRouter();
   const { isAuthenticated, isLoading } = useAuth();
   const { isSidebarOpen, setIsSidebarOpen, toggleSidebar } = useSidebar();
-  const { data: ledgers = [], isLoading: ledgersLoading } = useLedgers();
-  const { data: groups = [] } = useLedgerGroups();
-  const { data: parentGroups = [] } = useParentLedgerGroups();
-  const { data: spendingTypes = [] } = useSpendingTypes();
+  const { data: ledgers = [], isLoading: ledgersLoading, refetch: refetchLedgers } = useLedgers();
+  const { data: groups = [], refetch: refetchGroups } = useLedgerGroups();
+  const { data: parentGroups = [], refetch: refetchParentGroups } = useParentLedgerGroups();
+  const { data: spendingTypes = [], refetch: refetchSpendingTypes } = useSpendingTypes();
   const createTransactionMutation = useCreateTransaction();
   const createLedgerMutation = useCreateLedger();
   const createSpendingTypeMutation = useCreateSpendingType();
   const createLedgerGroupMutation = useCreateLedgerGroup();
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Filter ledgers: asset ledgers (Fixed Assets or Current Assets), paying accounts, and charge ledgers
   const assetGroups = groups.filter((group) => {
@@ -323,6 +324,22 @@ export default function AssetsPage() {
     setShowCreateChargeLedgerDialog(true);
   };
 
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await Promise.all([
+        refetchLedgers(),
+        refetchGroups(),
+        refetchParentGroups(),
+        refetchSpendingTypes(),
+      ]);
+    } catch (err) {
+      console.error("Error refreshing data:", err);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   const handleLedgerGroupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -464,7 +481,7 @@ export default function AssetsPage() {
         }`}
       >
         <div className="container mx-auto px-4 py-8 md:px-6 md:py-12">
-          <div className="mb-8 flex items-center justify-between">
+          <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-100">
                 Assets
@@ -473,12 +490,36 @@ export default function AssetsPage() {
                 Record and manage asset acquisitions
               </p>
             </div>
-            <button
-              onClick={() => setShowPostAssetDialog(true)}
-              className="rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white transition-colors hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
-            >
-              + Record Asset
-            </button>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <button
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+                className="flex items-center justify-center gap-2 rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
+                title="Refresh data"
+              >
+                <svg
+                  className={`h-5 w-5 ${isRefreshing ? "animate-spin" : ""}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
+                </svg>
+                <span>{isRefreshing ? "Refreshing..." : "Refresh"}</span>
+              </button>
+              <button
+                onClick={() => setShowPostAssetDialog(true)}
+                className="rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white transition-colors hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+              >
+                + Record Asset
+              </button>
+            </div>
           </div>
 
         </div>

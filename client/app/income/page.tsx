@@ -16,11 +16,13 @@ import {
   useLedgers,
   useLedgerGroups,
   useCreateLedger,
+  useCreateLedgerGroup,
+  useParentLedgerGroups,
 } from "@/lib/hooks/use-accounts";
 import { useCreateTransaction, useTransactions } from "@/lib/hooks/use-transactions";
 import { useQuery } from "@tanstack/react-query";
 import { getTransaction } from "@/lib/api/transactions";
-import type { LedgerCreate } from "@/lib/api/accounts";
+import type { LedgerCreate, LedgerGroupCreate } from "@/lib/api/accounts";
 
 type PeriodType = "month" | "custom";
 
@@ -30,10 +32,12 @@ export default function IncomePage() {
   const { isSidebarOpen, setIsSidebarOpen, toggleSidebar } = useSidebar();
   const { data: ledgers = [], isLoading: ledgersLoading, refetch: refetchLedgers } = useLedgers();
   const { data: groups = [] } = useLedgerGroups();
+  const { data: parentGroups = [] } = useParentLedgerGroups();
   const { data: incomeTransactions = [], refetch: refetchIncomes } = useTransactions("MONEY_RECEIVED");
   const { token } = useAuth();
   const createTransactionMutation = useCreateTransaction();
   const createLedgerMutation = useCreateLedger();
+  const createLedgerGroupMutation = useCreateLedgerGroup();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [periodType, setPeriodType] = useState<PeriodType>("month");
   const [selectedMonthDate, setSelectedMonthDate] = useState<Date>(new Date());
@@ -60,8 +64,16 @@ export default function IncomePage() {
   const [showPostIncomeDialog, setShowPostIncomeDialog] = useState(false);
   const [showCreateLedgerDialog, setShowCreateLedgerDialog] = useState(false);
   const [showCreateAssetLedgerDialog, setShowCreateAssetLedgerDialog] = useState(false);
+  const [showLedgerGroupForm, setShowLedgerGroupForm] = useState(false);
   const [pendingLedgerName, setPendingLedgerName] = useState("");
   const [pendingAssetLedgerName, setPendingAssetLedgerName] = useState("");
+  const [pendingLedgerGroupName, setPendingLedgerGroupName] = useState("");
+  const [creatingLedgerGroupFromForm, setCreatingLedgerGroupFromForm] = useState<"income" | "asset" | null>(null);
+  const [ledgerGroupFormData, setLedgerGroupFormData] = useState<LedgerGroupCreate>({
+    name: "",
+    parent_ledger_group_id: 0,
+    category: "other",
+  });
   const [formData, setFormData] = useState({
     transaction_date: new Date(),
     income_ledger_id: 0,
@@ -418,6 +430,49 @@ export default function IncomePage() {
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create ledger");
+    }
+  };
+
+  const handleLedgerGroupSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+
+    if (!ledgerGroupFormData.name.trim()) {
+      setError("Ledger group name is required");
+      return;
+    }
+
+    if (!ledgerGroupFormData.parent_ledger_group_id) {
+      setError("Please select a parent ledger group");
+      return;
+    }
+
+    try {
+      const newLedgerGroup = await createLedgerGroupMutation.mutateAsync(ledgerGroupFormData);
+      
+      // Auto-select the newly created ledger group in the appropriate form
+      if (creatingLedgerGroupFromForm === "income") {
+        setLedgerFormData({
+          ...ledgerFormData,
+          ledger_group_id: newLedgerGroup.id,
+        });
+      } else if (creatingLedgerGroupFromForm === "asset") {
+        setAssetLedgerFormData({
+          ...assetLedgerFormData,
+          ledger_group_id: newLedgerGroup.id,
+        });
+      }
+      
+      setShowLedgerGroupForm(false);
+      setLedgerGroupFormData({
+        name: "",
+        parent_ledger_group_id: 0,
+        category: "other",
+      });
+      setPendingLedgerGroupName("");
+      setCreatingLedgerGroupFromForm(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create ledger group");
     }
   };
 
@@ -921,6 +976,17 @@ export default function IncomePage() {
               searchPlaceholder="Type to search ledger groups..."
               required
               className="w-full"
+              onCreateNew={(searchTerm) => {
+                setPendingLedgerGroupName(searchTerm);
+                setCreatingLedgerGroupFromForm("income");
+                setLedgerGroupFormData({
+                  name: searchTerm,
+                  parent_ledger_group_id: 0,
+                  category: "incomes",
+                });
+                setShowLedgerGroupForm(true);
+              }}
+              createNewLabel={(searchTerm) => `Create "${searchTerm}" ledger group`}
             />
           </div>
 
@@ -1032,6 +1098,126 @@ export default function IncomePage() {
               className="rounded-lg bg-blue-600 px-6 py-2 font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
             >
               {createLedgerMutation.isPending ? "Creating..." : "Create Ledger"}
+            </button>
+          </div>
+        </form>
+      </Dialog>
+
+      {/* Create Ledger Group Dialog */}
+      <Dialog
+        isOpen={showLedgerGroupForm}
+        onClose={() => {
+          setShowLedgerGroupForm(false);
+          setLedgerGroupFormData({
+            name: "",
+            parent_ledger_group_id: 0,
+            category: "other",
+          });
+          setPendingLedgerGroupName("");
+          setCreatingLedgerGroupFromForm(null);
+        }}
+        title="Create Ledger Group"
+        size="lg"
+      >
+        <form onSubmit={handleLedgerGroupSubmit} className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <label className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Name *
+              </label>
+              <input
+                type="text"
+                value={ledgerGroupFormData.name}
+                onChange={(e) =>
+                  setLedgerGroupFormData({
+                    ...ledgerGroupFormData,
+                    name: e.target.value,
+                  })
+                }
+                required
+                className="w-full rounded-lg border border-zinc-300 bg-white px-4 py-2 text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+                placeholder="e.g., Bank Accounts, Cash Accounts"
+              />
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Parent Ledger Group *
+              </label>
+              <SearchableSelect
+                options={parentGroups.map((group) => ({
+                  value: group.id,
+                  label: group.name,
+                  searchText: group.name,
+                }))}
+                value={ledgerGroupFormData.parent_ledger_group_id || 0}
+                onChange={(value) =>
+                  setLedgerGroupFormData({
+                    ...ledgerGroupFormData,
+                    parent_ledger_group_id: typeof value === "number" ? value : parseInt(value as string),
+                  })
+                }
+                placeholder="Select a parent ledger group"
+                searchPlaceholder="Type to search parent groups..."
+                required
+                className="w-full"
+              />
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Category *
+              </label>
+              <select
+                value={ledgerGroupFormData.category}
+                onChange={(e) =>
+                  setLedgerGroupFormData({
+                    ...ledgerGroupFormData,
+                    category: e.target.value as LedgerGroupCreate["category"],
+                  })
+                }
+                required
+                className="w-full rounded-lg border border-zinc-300 bg-white px-4 py-2 text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+              >
+                <option value="incomes">Incomes</option>
+                <option value="expenses">Expenses</option>
+                <option value="bank_accounts">Bank Accounts</option>
+                <option value="cash_accounts">Cash Accounts</option>
+                <option value="bank_charges">Bank Charges</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+          </div>
+
+          {error && (
+            <div className="rounded-lg bg-red-50 p-4 text-sm text-red-800 dark:bg-red-900/20 dark:text-red-200">
+              {error}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-4">
+            <button
+              type="button"
+              onClick={() => {
+                setShowLedgerGroupForm(false);
+                setLedgerGroupFormData({
+                  name: "",
+                  parent_ledger_group_id: 0,
+                  category: "other",
+                });
+                setPendingLedgerGroupName("");
+                setCreatingLedgerGroupFromForm(null);
+              }}
+              className="rounded-lg border border-zinc-300 px-6 py-2 font-medium text-zinc-700 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={createLedgerGroupMutation.isPending}
+              className="rounded-lg bg-blue-600 px-6 py-2 font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
+            >
+              {createLedgerGroupMutation.isPending ? "Creating..." : "Create Ledger Group"}
             </button>
           </div>
         </form>

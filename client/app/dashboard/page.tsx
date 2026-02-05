@@ -292,8 +292,8 @@ export default function DashboardPage() {
             <div className="mb-6">
               <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <h2 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-100">
-                  Your Financial Overview
-                </h2>
+              Your Financial Overview
+            </h2>
               
               {/* Period Filter */}
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
@@ -449,13 +449,13 @@ export default function DashboardPage() {
                   <div className="w-full h-[450px] sm:h-[550px] md:h-[650px] lg:h-[700px] xl:h-[750px]">
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart margin={{ top: 0, right: 15, bottom: 10, left: 15 }}>
-                        <Pie
-                          data={expensesBySpendingType}
-                          cx="50%"
+                      <Pie
+                        data={expensesBySpendingType}
+                        cx="50%"
                           cy="40%"
                           labelLine={true}
-                          label={(props: any) => {
-                            const entry = expensesBySpendingType[props.index];
+                        label={(props: any) => {
+                          const entry = expensesBySpendingType[props.index];
                             if (!entry) return "";
                             const amount = entry.value.toLocaleString("en-US", {
                               minimumFractionDigits: 2,
@@ -463,7 +463,7 @@ export default function DashboardPage() {
                               useGrouping: true,
                             });
                             return `${entry.name}: ${entry.percentage}% (KSh ${amount})`;
-                          }}
+                        }}
                           outerRadius="70%"
                         fill="#8884d8"
                         dataKey="value"

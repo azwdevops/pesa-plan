@@ -525,12 +525,12 @@ export default function IncomePage() {
                 </svg>
                 <span>{isRefreshing ? "Refreshing..." : "Refresh"}</span>
               </button>
-              <button
-                onClick={() => setShowPostIncomeDialog(true)}
-                className="rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white transition-colors hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
-              >
-                + Post Income
-              </button>
+            <button
+              onClick={() => setShowPostIncomeDialog(true)}
+              className="rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white transition-colors hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+            >
+              + Post Income
+            </button>
             </div>
           </div>
 
